@@ -1,0 +1,3 @@
+#!/bin/sh
+# Pre-commit: block commits that contain possible secrets.
+exec uv run python scripts/secret_scan.py --staged

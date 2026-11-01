@@ -1,0 +1,50 @@
+# Secrets and local config
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+keys.md
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.egg-info/
+build/
+dist/
+.coverage
+htmlcov/
+
+# Node / React dashboard
+node_modules/
+apps/dashboard/dist/
+apps/dashboard/.vite/
+
+# Local data and generated output
+*.log
+*.sqlite3
+*.db
+data/generated/
+models/*.joblib
+
+# Docker
+infra/*.override.yml
+pgdata/
+
+# Editors and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Bob tooling (office dumps, temp files)
+.bob/
+# Personal working files (not published)
+Agent_Firewall_Project_Blueprint.docx
+CHECKPOINT1.md
+Progress1.md
