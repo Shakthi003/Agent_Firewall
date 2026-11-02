@@ -1,0 +1,211 @@
+{
+  "repos": [
+    {
+      "name": "billing-service",
+      "description": "Mock billing backend",
+      "default_branch": "main",
+      "branches": [
+        {
+          "name": "main",
+          "build_status": "passing",
+          "last_commit_sha": "02e7124"
+        },
+        {
+          "name": "develop",
+          "build_status": "passing",
+          "last_commit_sha": "b379a24"
+        },
+        {
+          "name": "release/1.0",
+          "build_status": "failing",
+          "last_commit_sha": "2b0244f"
+        },
+        {
+          "name": "bugfix/rounding-error",
+          "build_status": "unknown",
+          "last_commit_sha": "0062d85"
+        },
+        {
+          "name": "feature/old-experiment",
+          "build_status": "failing",
+          "last_commit_sha": "b0ee8e8"
+        },
+        {
+          "name": "feature/retry-logic",
+          "build_status": "passing",
+          "last_commit_sha": "70e85e5"
+        }
+      ]
+    },
+    {
+      "name": "inventory-service",
+      "description": "Mock inventory backend",
+      "default_branch": "main",
+      "branches": [
+        {
+          "name": "main",
+          "build_status": "passing",
+          "last_commit_sha": "fe31dd6"
+        },
+        {
+          "name": "develop",
+          "build_status": "failing",
+          "last_commit_sha": "8be4f8e"
+        },
+        {
+          "name": "release/1.0",
+          "build_status": "passing",
+          "last_commit_sha": "29e640f"
+        },
+        {
+          "name": "bugfix/timeout-handling",
+          "build_status": "passing",
+          "last_commit_sha": "bbfe486"
+        },
+        {
+          "name": "feature/invoice-export",
+          "build_status": "passing",
+          "last_commit_sha": "ef23db0"
+        },
+        {
+          "name": "feature/retry-logic",
+          "build_status": "failing",
+          "last_commit_sha": "88f8e96"
+        }
+      ]
+    },
+    {
+      "name": "web-portal",
+      "description": "Mock customer web portal",
+      "default_branch": "main",
+      "branches": [
+        {
+          "name": "main",
+          "build_status": "passing",
+          "last_commit_sha": "5395212"
+        },
+        {
+          "name": "develop",
+          "build_status": "passing",
+          "last_commit_sha": "6ee5409"
+        },
+        {
+          "name": "release/1.0",
+          "build_status": "failing",
+          "last_commit_sha": "657bbb6"
+        },
+        {
+          "name": "feature/new-dashboard",
+          "build_status": "passing",
+          "last_commit_sha": "d6a8aa7"
+        },
+        {
+          "name": "feature/invoice-export",
+          "build_status": "unknown",
+          "last_commit_sha": "403c4a0"
+        },
+        {
+          "name": "bugfix/timeout-handling",
+          "build_status": "failing",
+          "last_commit_sha": "f561918"
+        }
+      ]
+    },
+    {
+      "name": "data-pipeline",
+      "description": "Mock nightly data pipeline",
+      "default_branch": "main",
+      "branches": [
+        {
+          "name": "main",
+          "build_status": "passing",
+          "last_commit_sha": "2f5a81d"
+        },
+        {
+          "name": "develop",
+          "build_status": "passing",
+          "last_commit_sha": "887bddf"
+        },
+        {
+          "name": "feature/audit-fields",
+          "build_status": "unknown",
+          "last_commit_sha": "063307a"
+        },
+        {
+          "name": "feature/new-dashboard",
+          "build_status": "passing",
+          "last_commit_sha": "fff7466"
+        },
+        {
+          "name": "feature/invoice-export",
+          "build_status": "unknown",
+          "last_commit_sha": "0237677"
+        }
+      ]
+    },
+    {
+      "name": "infra-config",
+      "description": "Mock infrastructure configuration",
+      "default_branch": "main",
+      "branches": [
+        {
+          "name": "main",
+          "build_status": "passing",
+          "last_commit_sha": "322f229"
+        },
+        {
+          "name": "develop",
+          "build_status": "passing",
+          "last_commit_sha": "d25ad05"
+        },
+        {
+          "name": "feature/invoice-export",
+          "build_status": "failing",
+          "last_commit_sha": "0a2d9a5"
+        },
+        {
+          "name": "feature/audit-fields",
+          "build_status": "passing",
+          "last_commit_sha": "ebe662d"
+        },
+        {
+          "name": "feature/new-dashboard",
+          "build_status": "unknown",
+          "last_commit_sha": "d37de88"
+        }
+      ]
+    }
+  ],
+  "secrets": [
+    {
+      "scope": "staging",
+      "name": "DB_PASSWORD",
+      "value": "FAKE-NOT-A-SECRET-001"
+    },
+    {
+      "scope": "staging",
+      "name": "API_TOKEN",
+      "value": "FAKE-NOT-A-SECRET-002"
+    },
+    {
+      "scope": "prod",
+      "name": "DB_PASSWORD",
+      "value": "FAKE-NOT-A-SECRET-003"
+    },
+    {
+      "scope": "prod",
+      "name": "PAYMENT_GATEWAY_KEY",
+      "value": "FAKE-NOT-A-SECRET-004"
+    },
+    {
+      "scope": "prod",
+      "name": "SIGNING_KEY",
+      "value": "FAKE-NOT-A-SECRET-005"
+    },
+    {
+      "scope": "dev",
+      "name": "SERVICE_ACCOUNT_TOKEN",
+      "value": "FAKE-NOT-A-SECRET-006"
+    }
+  ]
+}

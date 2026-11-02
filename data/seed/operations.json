@@ -1,0 +1,534 @@
+{
+  "services": [
+    {
+      "name": "auth",
+      "env": "dev",
+      "status": "degraded",
+      "version": "3.2.13"
+    },
+    {
+      "name": "auth",
+      "env": "staging",
+      "status": "degraded",
+      "version": "1.2.8"
+    },
+    {
+      "name": "auth",
+      "env": "prod",
+      "status": "healthy",
+      "version": "1.1.4"
+    },
+    {
+      "name": "monitoring",
+      "env": "dev",
+      "status": "healthy",
+      "version": "1.7.9"
+    },
+    {
+      "name": "monitoring",
+      "env": "staging",
+      "status": "healthy",
+      "version": "1.7.8"
+    },
+    {
+      "name": "monitoring",
+      "env": "prod",
+      "status": "healthy",
+      "version": "3.7.1"
+    },
+    {
+      "name": "billing-api",
+      "env": "dev",
+      "status": "healthy",
+      "version": "1.7.9"
+    },
+    {
+      "name": "billing-api",
+      "env": "staging",
+      "status": "healthy",
+      "version": "2.6.5"
+    },
+    {
+      "name": "billing-api",
+      "env": "prod",
+      "status": "healthy",
+      "version": "3.7.14"
+    },
+    {
+      "name": "payments",
+      "env": "dev",
+      "status": "healthy",
+      "version": "1.9.14"
+    },
+    {
+      "name": "payments",
+      "env": "staging",
+      "status": "healthy",
+      "version": "1.6.20"
+    },
+    {
+      "name": "payments",
+      "env": "prod",
+      "status": "healthy",
+      "version": "3.2.11"
+    },
+    {
+      "name": "inventory",
+      "env": "dev",
+      "status": "healthy",
+      "version": "3.5.12"
+    },
+    {
+      "name": "inventory",
+      "env": "staging",
+      "status": "healthy",
+      "version": "3.0.8"
+    },
+    {
+      "name": "inventory",
+      "env": "prod",
+      "status": "healthy",
+      "version": "3.1.15"
+    },
+    {
+      "name": "notifications",
+      "env": "dev",
+      "status": "healthy",
+      "version": "2.4.6"
+    },
+    {
+      "name": "notifications",
+      "env": "staging",
+      "status": "healthy",
+      "version": "3.0.12"
+    },
+    {
+      "name": "notifications",
+      "env": "prod",
+      "status": "healthy",
+      "version": "3.4.8"
+    },
+    {
+      "name": "reporting",
+      "env": "dev",
+      "status": "healthy",
+      "version": "1.2.15"
+    },
+    {
+      "name": "reporting",
+      "env": "staging",
+      "status": "healthy",
+      "version": "1.7.15"
+    },
+    {
+      "name": "reporting",
+      "env": "prod",
+      "status": "healthy",
+      "version": "3.8.10"
+    },
+    {
+      "name": "search",
+      "env": "dev",
+      "status": "healthy",
+      "version": "3.9.9"
+    },
+    {
+      "name": "search",
+      "env": "staging",
+      "status": "healthy",
+      "version": "2.3.18"
+    },
+    {
+      "name": "search",
+      "env": "prod",
+      "status": "healthy",
+      "version": "3.4.8"
+    }
+  ],
+  "resources": [
+    {
+      "resource_id": "RES-001",
+      "name": "prod-customer-db",
+      "kind": "database",
+      "env": "prod"
+    },
+    {
+      "resource_id": "RES-002",
+      "name": "dev-scratch-bucket",
+      "kind": "bucket",
+      "env": "dev"
+    },
+    {
+      "resource_id": "RES-003",
+      "name": "dev-database-03",
+      "kind": "database",
+      "env": "dev"
+    },
+    {
+      "resource_id": "RES-004",
+      "name": "prod-queue-04",
+      "kind": "queue",
+      "env": "prod"
+    },
+    {
+      "resource_id": "RES-005",
+      "name": "prod-virtual-machine-05",
+      "kind": "virtual_machine",
+      "env": "prod"
+    },
+    {
+      "resource_id": "RES-006",
+      "name": "staging-virtual-machine-06",
+      "kind": "virtual_machine",
+      "env": "staging"
+    },
+    {
+      "resource_id": "RES-007",
+      "name": "staging-bucket-07",
+      "kind": "bucket",
+      "env": "staging"
+    },
+    {
+      "resource_id": "RES-008",
+      "name": "prod-queue-08",
+      "kind": "queue",
+      "env": "prod"
+    },
+    {
+      "resource_id": "RES-009",
+      "name": "staging-queue-09",
+      "kind": "queue",
+      "env": "staging"
+    },
+    {
+      "resource_id": "RES-010",
+      "name": "staging-virtual-machine-10",
+      "kind": "virtual_machine",
+      "env": "staging"
+    },
+    {
+      "resource_id": "RES-011",
+      "name": "prod-database-11",
+      "kind": "database",
+      "env": "prod"
+    },
+    {
+      "resource_id": "RES-012",
+      "name": "staging-database-12",
+      "kind": "database",
+      "env": "staging"
+    }
+  ],
+  "tickets": [
+    {
+      "ticket_id": "TCK-001",
+      "title": "Disk usage warning on billing-api",
+      "status": "in_progress",
+      "assignee": "Lena",
+      "comments": []
+    },
+    {
+      "ticket_id": "TCK-002",
+      "title": "Access request for monitoring dashboard",
+      "status": "in_progress",
+      "assignee": "Aiko",
+      "comments": []
+    },
+    {
+      "ticket_id": "TCK-003",
+      "title": "Update runbook for search",
+      "status": "resolved",
+      "assignee": "Tomas",
+      "comments": [
+        "Scheduled for the next maintenance window."
+      ]
+    },
+    {
+      "ticket_id": "TCK-004",
+      "title": "Disk usage warning on billing-api",
+      "status": "resolved",
+      "assignee": "Priya",
+      "comments": []
+    },
+    {
+      "ticket_id": "TCK-005",
+      "title": "Access request for notifications dashboard",
+      "status": "closed",
+      "assignee": "Lena",
+      "comments": []
+    },
+    {
+      "ticket_id": "TCK-006",
+      "title": "Disk usage warning on monitoring",
+      "status": "in_progress",
+      "assignee": "Aiko",
+      "comments": []
+    },
+    {
+      "ticket_id": "TCK-007",
+      "title": "Review alert thresholds for auth",
+      "status": "resolved",
+      "assignee": "Priya",
+      "comments": []
+    },
+    {
+      "ticket_id": "TCK-008",
+      "title": "Access request for inventory dashboard",
+      "status": "closed",
+      "assignee": "Priya",
+      "comments": [
+        "Reproduced in staging."
+      ]
+    },
+    {
+      "ticket_id": "TCK-009",
+      "title": "Investigate slow responses on reporting",
+      "status": "open",
+      "assignee": "Aiko",
+      "comments": []
+    },
+    {
+      "ticket_id": "TCK-010",
+      "title": "Review alert thresholds for auth",
+      "status": "open",
+      "assignee": "Marcus",
+      "comments": [
+        "Looking into it."
+      ]
+    },
+    {
+      "ticket_id": "TCK-011",
+      "title": "Access request for monitoring dashboard",
+      "status": "open",
+      "assignee": "Marcus",
+      "comments": []
+    },
+    {
+      "ticket_id": "TCK-012",
+      "title": "Disk usage warning on reporting",
+      "status": "open",
+      "assignee": "Aiko",
+      "comments": []
+    },
+    {
+      "ticket_id": "TCK-013",
+      "title": "Update runbook for auth",
+      "status": "open",
+      "assignee": "Aiko",
+      "comments": [
+        "Scheduled for the next maintenance window."
+      ]
+    },
+    {
+      "ticket_id": "TCK-014",
+      "title": "Update runbook for auth",
+      "status": "in_progress",
+      "assignee": "Aiko",
+      "comments": []
+    },
+    {
+      "ticket_id": "TCK-015",
+      "title": "Investigate slow responses on payments",
+      "status": "resolved",
+      "assignee": "Tomas",
+      "comments": []
+    },
+    {
+      "ticket_id": "TCK-016",
+      "title": "Access request for inventory dashboard",
+      "status": "in_progress",
+      "assignee": "Marcus",
+      "comments": [
+        "Looking into it."
+      ]
+    },
+    {
+      "ticket_id": "TCK-017",
+      "title": "Access request for notifications dashboard",
+      "status": "in_progress",
+      "assignee": "Marcus",
+      "comments": [
+        "Scheduled for the next maintenance window."
+      ]
+    },
+    {
+      "ticket_id": "TCK-018",
+      "title": "Investigate slow responses on monitoring",
+      "status": "resolved",
+      "assignee": "Marcus",
+      "comments": [
+        "Looking into it."
+      ]
+    },
+    {
+      "ticket_id": "TCK-019",
+      "title": "Access request for search dashboard",
+      "status": "in_progress",
+      "assignee": "Aiko",
+      "comments": []
+    },
+    {
+      "ticket_id": "TCK-020",
+      "title": "Review alert thresholds for monitoring",
+      "status": "resolved",
+      "assignee": "Priya",
+      "comments": []
+    },
+    {
+      "ticket_id": "TCK-021",
+      "title": "Renew certificate for monitoring",
+      "status": "closed",
+      "assignee": "Marcus",
+      "comments": [
+        "Scheduled for the next maintenance window."
+      ]
+    },
+    {
+      "ticket_id": "TCK-022",
+      "title": "Renew certificate for reporting",
+      "status": "closed",
+      "assignee": "Tomas",
+      "comments": []
+    },
+    {
+      "ticket_id": "TCK-023",
+      "title": "Investigate slow responses on reporting",
+      "status": "resolved",
+      "assignee": "Lena",
+      "comments": [
+        "Looking into it."
+      ]
+    },
+    {
+      "ticket_id": "TCK-024",
+      "title": "Update runbook for billing-api",
+      "status": "open",
+      "assignee": "Priya",
+      "comments": []
+    },
+    {
+      "ticket_id": "TCK-025",
+      "title": "Update runbook for inventory",
+      "status": "open",
+      "assignee": "Aiko",
+      "comments": [
+        "Scheduled for the next maintenance window."
+      ]
+    },
+    {
+      "ticket_id": "TCK-026",
+      "title": "Access request for auth dashboard",
+      "status": "resolved",
+      "assignee": "Priya",
+      "comments": []
+    },
+    {
+      "ticket_id": "TCK-027",
+      "title": "Renew certificate for billing-api",
+      "status": "closed",
+      "assignee": "Marcus",
+      "comments": []
+    },
+    {
+      "ticket_id": "TCK-028",
+      "title": "Disk usage warning on notifications",
+      "status": "resolved",
+      "assignee": "Aiko",
+      "comments": [
+        "Reproduced in staging."
+      ]
+    },
+    {
+      "ticket_id": "TCK-029",
+      "title": "Review alert thresholds for reporting",
+      "status": "closed",
+      "assignee": "Aiko",
+      "comments": [
+        "Reproduced in staging."
+      ]
+    },
+    {
+      "ticket_id": "TCK-030",
+      "title": "Renew certificate for auth",
+      "status": "resolved",
+      "assignee": "Aiko",
+      "comments": []
+    },
+    {
+      "ticket_id": "TCK-031",
+      "title": "Review alert thresholds for billing-api",
+      "status": "resolved",
+      "assignee": "Marcus",
+      "comments": [
+        "Waiting for the owning team to reply."
+      ]
+    },
+    {
+      "ticket_id": "TCK-032",
+      "title": "Review alert thresholds for reporting",
+      "status": "closed",
+      "assignee": "Tomas",
+      "comments": []
+    },
+    {
+      "ticket_id": "TCK-033",
+      "title": "Update runbook for monitoring",
+      "status": "in_progress",
+      "assignee": "Priya",
+      "comments": []
+    },
+    {
+      "ticket_id": "TCK-034",
+      "title": "Update runbook for search",
+      "status": "closed",
+      "assignee": "Tomas",
+      "comments": []
+    },
+    {
+      "ticket_id": "TCK-035",
+      "title": "Investigate slow responses on search",
+      "status": "closed",
+      "assignee": "Tomas",
+      "comments": []
+    },
+    {
+      "ticket_id": "TCK-036",
+      "title": "Review alert thresholds for payments",
+      "status": "open",
+      "assignee": "Lena",
+      "comments": []
+    },
+    {
+      "ticket_id": "TCK-037",
+      "title": "Access request for payments dashboard",
+      "status": "open",
+      "assignee": "Tomas",
+      "comments": []
+    },
+    {
+      "ticket_id": "TCK-038",
+      "title": "Renew certificate for auth",
+      "status": "resolved",
+      "assignee": "Marcus",
+      "comments": [
+        "Scheduled for the next maintenance window."
+      ]
+    },
+    {
+      "ticket_id": "TCK-039",
+      "title": "Disk usage warning on monitoring",
+      "status": "resolved",
+      "assignee": "Lena",
+      "comments": [
+        "Scheduled for the next maintenance window."
+      ]
+    },
+    {
+      "ticket_id": "TCK-040",
+      "title": "Access request for monitoring dashboard",
+      "status": "in_progress",
+      "assignee": "Tomas",
+      "comments": []
+    }
+  ]
+}
