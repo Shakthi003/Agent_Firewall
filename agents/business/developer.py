@@ -45,12 +45,16 @@ async def run_developer_agent(
     operations_client: Client,
     task: str,
     max_steps: int = DEFAULT_MAX_STEPS,
+    show_secrets_tool: bool = False,
 ) -> AgentRun:
+    """`show_secrets_tool` is the Scenario C demo run: it makes `read_env_secrets` visible."""
     return await run_agent(
         model=model,
         system_prompt=DEVELOPER_SYSTEM_PROMPT,
         clients=[developer_tools_client, operations_client],
-        allowed_tools=DEVELOPER_TOOLS,
+        allowed_tools=(*DEVELOPER_TOOLS, "read_env_secrets")
+        if show_secrets_tool
+        else DEVELOPER_TOOLS,
         task=task,
         max_steps=max_steps,
     )
