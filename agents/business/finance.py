@@ -41,7 +41,7 @@ async def run_finance_agent(
     return await run_agent(
         model=model,
         system_prompt=FINANCE_SYSTEM_PROMPT,
-        client=client,
+        clients=[client],
         allowed_tools=FINANCE_TOOLS,
         task=task,
         max_steps=max_steps,

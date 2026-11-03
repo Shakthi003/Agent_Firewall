@@ -9,7 +9,7 @@ answer. Every call is recorded. The same loop works against a downstream server 
 from __future__ import annotations
 
 import json
-from collections.abc import Collection
+from collections.abc import Collection, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -43,19 +43,27 @@ async def run_agent(
     *,
     model: ChatModel,
     system_prompt: str,
-    client: Client,
+    clients: Sequence[Client],
     allowed_tools: Collection[str],
     task: str,
     max_steps: int = DEFAULT_MAX_STEPS,
 ) -> AgentRun:
-    """Run one task. `client` must already be connected (inside `async with`)."""
-    listed = (await client.list_tools()).tools
-    specs = [
-        ToolSpec(name=t.name, description=t.description or "", parameters=t.input_schema)
-        for t in listed
-        if t.name in allowed_tools
-    ]
-    offered = {s.name for s in specs}
+    """Run one task. Every client must already be connected (inside `async with`).
+
+    An agent may use tools from several servers. Each allowed tool is routed to the first
+    client that lists it.
+    """
+    specs: list[ToolSpec] = []
+    routes: dict[str, Client] = {}
+    for client in clients:
+        for t in (await client.list_tools()).tools:
+            if t.name in allowed_tools and t.name not in routes:
+                routes[t.name] = client
+                specs.append(
+                    ToolSpec(
+                        name=t.name, description=t.description or "", parameters=t.input_schema
+                    )
+                )
 
     messages: list[Message] = [Message(role="user", text=task)]
     run = AgentRun(final_text="")
@@ -66,17 +74,17 @@ async def run_agent(
         if not reply.tool_calls:
             run.final_text = reply.text
             return run
-        results = [await _execute(client, call, offered, run) for call in reply.tool_calls]
+        results = [await _execute(routes, call, run) for call in reply.tool_calls]
         messages.append(Message(role="tool", tool_results=tuple(results)))
     raise AgentStepLimitError(f"No final answer after {max_steps} steps")
 
 
-async def _execute(client: Client, call: ToolCall, offered: set[str], run: AgentRun) -> ToolResult:
-    if call.name not in offered:
+async def _execute(routes: dict[str, Client], call: ToolCall, run: AgentRun) -> ToolResult:
+    if call.name not in routes:
         content: dict[str, Any] = {"error": f"Tool {call.name} is not available to this agent"}
         is_error = True
     else:
-        result = await client.call_tool(call.name, call.args)
+        result = await routes[call.name].call_tool(call.name, call.args)
         is_error = result.is_error
         content = _result_content(result)
     run.calls.append(CallRecord(call.name, call.args, content, is_error))
