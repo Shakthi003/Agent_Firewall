@@ -1,6 +1,27 @@
 name: agent-firewall
 
-# Stage 0: only PostgreSQL for now. Gateway, MCP servers and API are added in later stages.
+# Stage 2 network boundary (docs/architecture.md section 7).
+#
+#   agent_net     agents + gateway          the only network an agent can see
+#   internal_net  gateway + MCP servers + PostgreSQL     no route from agents
+#
+# Only the gateway is on both networks. The MCP servers publish no ports to the host.
+# Start the protected stack:   docker compose -f infra/docker-compose.yml up -d --build
+# Start the UNPROTECTED baseline (agents reach the servers directly, for comparison):
+#   docker compose -f infra/docker-compose.yml --profile baseline up -d --build
+
+x-app: &app
+  build:
+    context: ..
+    dockerfile: Dockerfile
+  image: agent-firewall:dev
+  restart: "no"
+
+x-mcp-healthcheck: &socket-check
+  interval: 5s
+  timeout: 3s
+  retries: 10
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -13,11 +34,79 @@ services:
       - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    networks: [internal_net]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-agentfirewall} -d ${POSTGRES_DB:-agentfirewall}"]
       interval: 5s
       timeout: 3s
       retries: 10
+
+  company-data:
+    <<: *app
+    command: ["python", "-m", "mcp_servers.company_data", "--host", "0.0.0.0"]
+    networks: [internal_net]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1', 9001), 2)"]
+      <<: *socket-check
+
+  operations:
+    <<: *app
+    command: ["python", "-m", "mcp_servers.operations", "--host", "0.0.0.0"]
+    networks: [internal_net]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1', 9002), 2)"]
+      <<: *socket-check
+
+  developer-tools:
+    <<: *app
+    command: ["python", "-m", "mcp_servers.developer_tools", "--host", "0.0.0.0"]
+    networks: [internal_net]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1', 9003), 2)"]
+      <<: *socket-check
+
+  gateway:
+    <<: *app
+    command: ["python", "-m", "gateway.mcp_gateway"]
+    environment:
+      GATEWAY_HOST: 0.0.0.0
+      POSTGRES_HOST: postgres
+      POSTGRES_USER: ${POSTGRES_USER:-agentfirewall}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-agentfirewall}
+    depends_on:
+      postgres: {condition: service_healthy}
+      company-data: {condition: service_healthy}
+      operations: {condition: service_healthy}
+      developer-tools: {condition: service_healthy}
+    networks: [agent_net, internal_net]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1', 8080), 2)"]
+      <<: *socket-check
+
+  # The protected agent: attached to agent_net only, so the only thing it can reach is the gateway.
+  agent:
+    <<: *app
+    command: ["sleep", "infinity"]
+    environment:
+      GATEWAY_URL: http://gateway:8080/mcp
+    depends_on:
+      gateway: {condition: service_healthy}
+    networks: [agent_net]
+
+  # BASELINE ONLY - deliberately unprotected. This agent sits on internal_net, so it can reach
+  # the MCP servers directly and bypass the gateway. It exists to show what the gateway prevents.
+  agent-baseline:
+    <<: *app
+    profiles: [baseline]
+    command: ["sleep", "infinity"]
+    networks: [internal_net]
+    depends_on:
+      company-data: {condition: service_healthy}
+
+networks:
+  agent_net: {}
+  internal_net: {}
 
 volumes:
   pgdata:

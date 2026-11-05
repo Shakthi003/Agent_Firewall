@@ -32,8 +32,16 @@ class Settings(BaseSettings):
     # Gateway
     gateway_host: str = "127.0.0.1"
     gateway_port: int = 8080
+    gateway_url: str = "http://127.0.0.1:8080/mcp"  # what the agents connect to
+    gateway_call_timeout_seconds: float = 30.0  # limit for one downstream tool call
     policy_dir: str = "policies"
     approval_expiry_minutes: int = 15
+
+    # Agent identity (Stage 2): one API key per agent, shown once by scripts/register_agents.py
+    agent_key_ttl_days: int = 90
+    finance_agent_key: SecretStr | None = None
+    it_ops_agent_key: SecretStr | None = None
+    developer_agent_key: SecretStr | None = None
 
     # Downstream MCP servers (internal network only)
     company_data_mcp_url: str = "http://company-data:9001/mcp"

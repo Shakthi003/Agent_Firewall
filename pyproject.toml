@@ -50,6 +50,8 @@ ignore = ["S101"]  # asserts are fine in tests
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S105", "S106"]
+# Drives the docker CLI with fixed arguments to prove the network boundary.
+"tests/integration/test_network_isolation.py" = ["S404", "S603", "S607"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

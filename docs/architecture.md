@@ -173,3 +173,30 @@ Approvals expire after 15 minutes by default (configurable). The polling and ret
 1. Identity: per-agent API key as a bearer token, hashed in the registry and shown once; JWT exchange is a later option.
 2. Approval polling and retry: a helper in each agent's MCP client wrapper.
 3. Approval expiry: 15 minutes by default, configurable.
+
+
+---
+
+## 9. Stage 2 as built
+
+| Part | Where | What it does |
+| ---- | ----- | ------------ |
+| Agent registry | `gateway/identity/registry.py` | Agent ID, role, status, credential hash and expiry; issue, rotate, disable, authenticate |
+| Identity middleware | `gateway/identity/middleware.py` | Verifies the bearer key on every HTTP request and puts the result in the request scope |
+| Tool registry | `gateway/mcp_gateway/tool_registry.yaml`, `tools.py` | 22 approved tools, each with a downstream server, owner, sensitivity and granted roles |
+| Gateway | `gateway/mcp_gateway/server.py` | MCP server for agents, MCP client for downstream servers |
+| Policy hook | `gateway/policy/decision.py` | `PolicyEngine` interface; Stage 2 uses `AllowAllPolicy` so only identity and the registry are enforced |
+| Audit | `gateway/mcp_gateway/audit.py` | One event per call; no raw keys and no argument values (arguments are hashed) |
+| Docker | `Dockerfile`, `infra/docker-compose.yml` | `agent_net` / `internal_net` boundary and the labelled `baseline` profile |
+
+**`tools/call` order inside the gateway:** correlation ID, identity, tool in registry, role granted, identity-like arguments stripped and logged as a spoof attempt, strict schema validation, policy, forward with timeout, audit. Every step fails closed, and a denial never reaches a downstream server.
+
+**Choices worth knowing**
+
+- Identity comes only from the verified key. A payload field such as `agent_name` is never trusted; it is removed and recorded.
+- `tools/list` is filtered by role, so an agent cannot even see tools it has no grant for. `get_employee_record`, `read_payroll` and `read_env_secrets` have no role grants.
+- Downstream tool schemas do not forbid extra properties, so the gateway closes them itself and rejects unknown arguments.
+- Denials return a decision, reason code, correlation ID and a short message. No stack traces or internal details.
+- The gateway does not start if the registry file is invalid, the database is unreachable, or an approved tool is missing from its downstream server.
+
+**Network proof (AC-11):** `tests/integration/test_network_isolation.py` starts the real Compose stack under its own project name and checks from inside the agent container that the gateway is reachable, and that each MCP server and PostgreSQL are not, by name and by IP address. It also checks no downstream port is published to the host, and that the `agent-baseline` container (the deliberately unprotected profile) can reach a server directly. The test is skipped when no Docker daemon is available.

@@ -1,0 +1,14 @@
+.git
+.venv
+.env
+.bob
+.pytest_cache
+.ruff_cache
+__pycache__
+*.pyc
+*.docx
+CHECKPOINT1.md
+Progress1.md
+tests
+docs
+data/generated

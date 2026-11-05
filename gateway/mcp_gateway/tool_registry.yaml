@@ -1,0 +1,67 @@
+# Approved tool registry (Stage 2).
+#
+# The gateway exposes ONLY the tools listed here. A tool that a downstream server offers but
+# that is not listed is invisible and uncallable (UNKNOWN_TOOL). A tool listed here that the
+# downstream server does not offer stops the gateway at start-up (fail closed).
+#
+# Source: docs/permission-matrix.md
+#   server       which downstream MCP server runs the tool
+#   owner        the accountable owner role (matrix section 2.1)
+#   sensitivity  L low, M medium, H high, C critical
+#   roles        roles that may SEE and attempt the tool (matrix section 3: every cell that is
+#                not HIDDEN). Whether an attempt is allowed, needs approval or is blocked is
+#                decided later by the policy engine (Stage 3).
+#
+# Argument schemas are not copied here: the gateway reads them from the downstream servers'
+# own tools/list, so there is one source of truth.
+version: 1
+tools:
+  # ---- Company Data MCP
+  get_invoice:
+    {server: company_data, owner: Finance System Owner, sensitivity: M, roles: [finance]}
+  list_invoices:
+    {server: company_data, owner: Finance System Owner, sensitivity: M, roles: [finance]}
+  get_payment_status:
+    {server: company_data, owner: Finance System Owner, sensitivity: L, roles: [finance]}
+  initiate_payment:
+    {server: company_data, owner: Finance System Owner, sensitivity: H, roles: [finance]}
+  update_beneficiary_bank_details:
+    {server: company_data, owner: Finance System Owner, sensitivity: C, roles: [finance]}
+  get_customer_record:
+    {server: company_data, owner: Finance System Owner, sensitivity: M, roles: [finance]}
+  export_records:
+    {server: company_data, owner: Finance System Owner, sensitivity: H, roles: [finance]}
+  get_employee_record:
+    {server: company_data, owner: HR System Owner, sensitivity: H, roles: []}
+  read_payroll:
+    {server: company_data, owner: HR System Owner, sensitivity: C, roles: []}
+
+  # ---- Operations MCP
+  get_service_status:
+    {server: operations, owner: IT Operations Lead, sensitivity: L, roles: [it_ops, developer]}
+  update_ticket:
+    {server: operations, owner: IT Operations Lead, sensitivity: L, roles: [it_ops]}
+  send_notification:
+    {server: operations, owner: IT Operations Lead, sensitivity: L, roles: [it_ops]}
+  restart_service:
+    {server: operations, owner: IT Operations Lead, sensitivity: M, roles: [it_ops]}
+  delete_resource:
+    {server: operations, owner: IT Operations Lead, sensitivity: C, roles: [it_ops]}
+  disable_monitoring:
+    {server: operations, owner: IT Operations Lead, sensitivity: C, roles: [it_ops]}
+
+  # ---- Developer Tools MCP
+  repo_get_metadata:
+    {server: developer_tools, owner: Engineering Lead, sensitivity: L, roles: [developer]}
+  repo_get_build_status:
+    {server: developer_tools, owner: Engineering Lead, sensitivity: L, roles: [developer]}
+  repo_create_branch:
+    {server: developer_tools, owner: Engineering Lead, sensitivity: M, roles: [developer]}
+  repo_open_pull_request:
+    {server: developer_tools, owner: Engineering Lead, sensitivity: M, roles: [developer]}
+  repo_push_commit:
+    {server: developer_tools, owner: Engineering Lead, sensitivity: H, roles: [developer]}
+  repo_delete_branch:
+    {server: developer_tools, owner: Engineering Lead, sensitivity: H, roles: [developer]}
+  read_env_secrets:
+    {server: developer_tools, owner: Security Team, sensitivity: C, roles: []}
