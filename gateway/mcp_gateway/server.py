@@ -7,7 +7,7 @@ Every `tools/call` goes through the pipeline in `docs/architecture.md` section 3
 failed step ends the request:
 
     1. correlation ID          5. argument schema (P-004)
-    2. identity (P-002)        6. policy decision (pass-through in Stage 2; rules in Stage 3)
+    2. identity (P-002)        6. policy decision (rate limit, then the YAML rules)
     3. tool registered (P-001) 7. forward downstream, with a timeout
     4. tool granted (P-003)    8. audit event, then return a result or a safe denial
 
@@ -26,7 +26,7 @@ import logging
 import time
 import uuid
 from collections.abc import Callable, Mapping
-from typing import Any
+from typing import Any, get_args
 
 from jsonschema import Draft202012Validator
 from mcp.server.context import ServerRequestContext
@@ -49,14 +49,17 @@ from gateway.mcp_gateway.audit import AuditEvent, AuditSink, ExecutionStatus, ha
 from gateway.mcp_gateway.downstream import CORRELATION_META_KEY, Downstream
 from gateway.mcp_gateway.tools import ToolRegistry
 from gateway.policy.decision import (
+    APPROVAL_REQUIRED,
     DOWNSTREAM_ERROR,
     DOWNSTREAM_TIMEOUT,
     INVALID_ARGUMENTS,
     POLICY_UNAVAILABLE,
+    RATE_LIMIT_EXCEEDED,
     TOOL_NOT_GRANTED,
     UNKNOWN_TOOL,
     UNREGISTERED_AGENT,
     Decision,
+    PolicyDecision,
     PolicyEngine,
 )
 
@@ -64,6 +67,7 @@ logger = logging.getLogger(__name__)
 
 GATEWAY_NAME = "agent-firewall-gateway"
 DEFAULT_CALL_TIMEOUT_SECONDS = 30.0
+DECISIONS = frozenset(get_args(Decision))
 
 # Payload fields that claim an identity. They are never trusted.
 IDENTITY_FIELDS = frozenset(
@@ -87,6 +91,8 @@ _MESSAGES = {
     TOOL_NOT_GRANTED: "This tool is not granted to your role.",
     INVALID_ARGUMENTS: "The arguments do not match the tool's input schema.",
     POLICY_UNAVAILABLE: "The request could not be checked, so it was not run.",
+    RATE_LIMIT_EXCEEDED: "Too many requests. Wait and try again.",
+    APPROVAL_REQUIRED: "This action needs human approval and was not run.",
     DOWNSTREAM_TIMEOUT: "The tool took too long to answer.",
     DOWNSTREAM_ERROR: "The tool could not be reached.",
 }
@@ -244,6 +250,9 @@ class Gateway:
             if not self._arguments_valid(tool, clean_args):
                 return deny(INVALID_ARGUMENTS)
             decision = self._policy.evaluate(identity, tool, clean_args)
+            # Only a well-formed decision is acted on. Anything else is a policy fault.
+            if not isinstance(decision, PolicyDecision) or decision.decision not in DECISIONS:
+                raise TypeError("the policy engine returned something that is not a decision")
         except Exception:
             # Fail closed: a gateway or policy fault must never turn into a forwarded call.
             logger.exception("gateway pipeline failed before forwarding (correlation %s)", cid)

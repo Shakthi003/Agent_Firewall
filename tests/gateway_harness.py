@@ -28,6 +28,9 @@ from gateway.mcp_gateway.downstream import Downstream, load_catalog
 from gateway.mcp_gateway.server import Gateway
 from gateway.mcp_gateway.tools import ToolRegistry
 from gateway.policy.decision import AllowAllPolicy, PolicyEngine
+from gateway.policy.engine import RuleEngine
+from gateway.policy.policy_file import default_policy_path
+from gateway.policy.rate_limit import TokenBucketRateLimiter
 from mcp_servers.company_data.server import create_server as create_company_data
 from mcp_servers.developer_tools.server import create_server as create_developer_tools
 from mcp_servers.operations.server import create_server as create_operations
@@ -74,6 +77,7 @@ class GatewayHarness:
     keys: dict[str, IssuedKey] = field(default_factory=dict)
     # Seconds every downstream connection waits before it opens (to test the call timeout).
     delay: dict[str, float] = field(default_factory=lambda: {"seconds": 0.0})
+    catalog: dict[str, Any] = field(default_factory=dict)  # tool name -> MCP Tool definition
 
     def client(self, key: str | None) -> AbstractAsyncContextManager[Client]:
         """A standard MCP client talking to the gateway with this bearer key."""
@@ -97,9 +101,13 @@ def client_for(app: Starlette, key: str | None) -> AbstractAsyncContextManager[C
 async def running_gateway(
     *,
     policy: PolicyEngine | None = None,
+    rules: bool = False,
+    limiter: TokenBucketRateLimiter | None = None,
     call_timeout: float = 5.0,
     tools: ToolRegistry | None = None,
 ) -> AsyncIterator[GatewayHarness]:
+    """`rules=True` runs the real Stage 3 engine on `policies/policy.yaml`. The limiter defaults
+    to a roomy one so that tests which make many calls do not trip the rate limit."""
     company, operations, developer = generate_all()
     servers = {
         "company_data": create_company_data(company),
@@ -123,6 +131,14 @@ async def running_gateway(
     registry = AgentRegistry(make_engine("sqlite://"))
     registry.create_tables()
     audit = InMemoryAuditSink()
+    if rules and policy is None:
+        policy = RuleEngine.from_file(
+            default_policy_path("policies"),
+            tool_arguments={
+                n: set(t.input_schema.get("properties", {})) for n, t in catalog.items()
+            },
+            limiter=limiter or TokenBucketRateLimiter(6000, 1000),
+        )
     gateway = Gateway(
         registry=registry,
         tools=tools,
@@ -151,7 +167,7 @@ async def running_gateway(
     holder = asyncio.create_task(hold_lifespan())
     await ready.wait()
     try:
-        yield GatewayHarness(app, registry, audit, downstream, keys, delay)
+        yield GatewayHarness(app, registry, audit, downstream, keys, delay, dict(catalog))
     finally:
         stop.set()
         await holder

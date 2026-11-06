@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 
-from pydantic import SecretStr
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -36,6 +36,9 @@ class Settings(BaseSettings):
     gateway_call_timeout_seconds: float = 30.0  # limit for one downstream tool call
     policy_dir: str = "policies"
     approval_expiry_minutes: int = 15
+    # Rate limit (Stage 3): token bucket per agent. Sustained rate and the largest burst.
+    rate_limit_calls_per_minute: float = Field(default=30, gt=0)
+    rate_limit_burst: int = Field(default=10, ge=1)
 
     # Agent identity (Stage 2): one API key per agent, shown once by scripts/register_agents.py
     agent_key_ttl_days: int = 90

@@ -1,0 +1,105 @@
+# Stage 3 policy (deterministic rules, no model involved).
+#
+# Format: see gateway/policy/policy_file.py. Per tool: ordered `rules` (first match wins) and a
+# `default`. A field absent from a call matches nothing, so each "allow" below is a narrow case
+# and everything else falls to the strict default.
+#
+# Source: docs/permission-matrix.md sections 3-5 (decisions, conditions, reason codes).
+# Which tools a role may see at all is decided earlier by gateway/mcp_gateway/tool_registry.yaml
+# (TOOL_NOT_GRANTED); these rules apply to calls that passed that check.
+#
+# The limits below are the provisional values from the permission matrix:
+#   `limit` = number of rows, `amount` = mock USD.
+#
+# Changing any byte of this file changes the policy version recorded on every decision
+# (policy_version + first 8 hex characters of the file's SHA-256).
+version: 1
+policy_version: "1.0"
+
+tools:
+  # ---- Company Data MCP (Finance Agent)
+  get_invoice:
+    default: {decision: ALLOW}
+  get_payment_status:
+    default: {decision: ALLOW}
+  get_customer_record:
+    default: {decision: ALLOW}
+
+  list_invoices:
+    rules:
+      - {when: {limit: {lte: 50}}, decision: ALLOW}
+      - {when: {limit: {exists: false}}, decision: ALLOW, note: "server default is 20"}
+    default: {decision: BLOCK, reason: ARG_LIMIT_EXCEEDED}
+
+  initiate_payment:
+    rules:
+      - {when: {amount: {lte: 5000}}, decision: ALLOW}
+    default: {decision: REQUIRE_APPROVAL, reason: APPROVAL_REQUIRED}
+
+  # Scenario A: a bank-detail change always pauses for a human.
+  update_beneficiary_bank_details:
+    default: {decision: REQUIRE_APPROVAL, reason: APPROVAL_REQUIRED}
+
+  # Scenario D: a large invoice export pauses; any other table is blocked outright.
+  export_records:
+    rules:
+      - {when: {table: {eq: invoices}, limit: {lte: 100}}, decision: ALLOW}
+      - {when: {table: {eq: invoices}}, decision: REQUIRE_APPROVAL, reason: APPROVAL_REQUIRED}
+    default: {decision: BLOCK, reason: SENSITIVE_TABLE_EXPORT}
+
+  # Granted to no role; blocked here too as defence in depth.
+  get_employee_record:
+    default: {decision: BLOCK, reason: TOOL_NOT_GRANTED}
+  read_payroll:
+    default: {decision: BLOCK, reason: TOOL_NOT_GRANTED}
+
+  # ---- Operations MCP (IT Operations Agent; get_service_status also Developer)
+  get_service_status:
+    default: {decision: ALLOW}
+  update_ticket:
+    default: {decision: ALLOW}
+  send_notification:
+    default: {decision: ALLOW}
+
+  restart_service:
+    rules:
+      - {when: {env: {in: [dev, staging]}}, decision: ALLOW}
+      - when: {env: {eq: prod}, service: {in: [auth, monitoring]}}
+        decision: BLOCK
+        reason: RESTRICTED_SERVICE
+      - {when: {env: {eq: prod}}, decision: REQUIRE_APPROVAL, reason: APPROVAL_REQUIRED}
+    default: {decision: REQUIRE_APPROVAL, reason: APPROVAL_REQUIRED}
+
+  # Scenario B: destructive operations are always blocked. The reason code says whether the
+  # target was production.
+  delete_resource:
+    rules:
+      - {when: {env: {eq: prod}}, decision: BLOCK, reason: PROD_DESTRUCTIVE_DENIED}
+    default: {decision: BLOCK, reason: DESTRUCTIVE_TOOL_DENIED}
+  disable_monitoring:
+    rules:
+      - {when: {env: {eq: prod}}, decision: BLOCK, reason: PROD_DESTRUCTIVE_DENIED}
+    default: {decision: BLOCK, reason: DESTRUCTIVE_TOOL_DENIED}
+
+  # ---- Developer Tools MCP (Developer Agent)
+  repo_get_metadata:
+    default: {decision: ALLOW}
+  repo_get_build_status:
+    default: {decision: ALLOW}
+  repo_create_branch:
+    default: {decision: ALLOW}
+  repo_open_pull_request:
+    default: {decision: ALLOW}
+
+  repo_push_commit:
+    rules:
+      - {when: {branch: {glob: [main, "release/*"]}}, decision: BLOCK, reason: PROTECTED_BRANCH}
+    default: {decision: ALLOW}
+  repo_delete_branch:
+    rules:
+      - {when: {branch: {glob: [main, "release/*"]}}, decision: BLOCK, reason: PROTECTED_BRANCH}
+    default: {decision: ALLOW}
+
+  # Scenario C: no allow condition at all.
+  read_env_secrets:
+    default: {decision: BLOCK, reason: SECRETS_ACCESS_DENIED}

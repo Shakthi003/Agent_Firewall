@@ -13,6 +13,7 @@ import argparse
 import asyncio
 import logging
 import sys
+from pathlib import Path
 
 import uvicorn
 from starlette.applications import Starlette
@@ -30,23 +31,37 @@ from gateway.mcp_gateway.downstream import (
 )
 from gateway.mcp_gateway.server import Gateway
 from gateway.mcp_gateway.tools import RegistryError, ToolRegistry
-from gateway.policy.decision import AllowAllPolicy
+from gateway.policy.engine import RuleEngine
+from gateway.policy.policy_file import PolicyFileError, default_policy_path
+from gateway.policy.rate_limit import TokenBucketRateLimiter
 
 
 async def build_gateway(
-    settings: Settings, *, database_url: str | None = None, connector: Connector | None = None
+    settings: Settings,
+    *,
+    database_url: str | None = None,
+    connector: Connector | None = None,
+    policy_path: Path | None = None,
 ) -> Starlette:
     registry = AgentRegistry(make_engine(database_url or settings.database_url))
     registry.create_tables()
     downstream = Downstream(connector or http_connector(settings))
     tools = ToolRegistry.load()
     catalog = await load_catalog(tools, downstream)
+    policy = RuleEngine.from_file(
+        policy_path or default_policy_path(settings.policy_dir),
+        tool_arguments={n: set(t.input_schema.get("properties", {})) for n, t in catalog.items()},
+        limiter=TokenBucketRateLimiter(
+            settings.rate_limit_calls_per_minute, settings.rate_limit_burst
+        ),
+    )
+    logging.getLogger(__name__).info("policy loaded, version %s", policy.version)
     gateway = Gateway(
         registry=registry,
         tools=tools,
         catalog=catalog,
         downstream=downstream,
-        policy=AllowAllPolicy(),  # Stage 3 replaces this with the YAML rule engine
+        policy=policy,
         audit=LoggingAuditSink(),
         call_timeout=settings.gateway_call_timeout_seconds,
     )
@@ -66,11 +81,10 @@ def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO)
     try:
         app = asyncio.run(build_gateway(settings, database_url=args.database_url))
-    except (RegistryError, GatewayStartupError, RuntimeError) as exc:
+    except (RegistryError, GatewayStartupError, PolicyFileError, RuntimeError) as exc:
         print(f"gateway not started: {exc}")
         return 1
 
-    print("*** Gateway running with the Stage 2 allow-all policy: identity and registry only ***")
     uvicorn.run(app, host=host, port=port, log_level="info")
     return 0
 

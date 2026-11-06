@@ -18,6 +18,7 @@ RUN uv sync --frozen --no-dev --no-install-project
 COPY core ./core
 COPY agents ./agents
 COPY gateway ./gateway
+COPY policies ./policies
 COPY mcp_servers ./mcp_servers
 COPY scripts ./scripts
 COPY data/seed ./data/seed

@@ -141,7 +141,8 @@ Design notes:
 | `repo_delete_branch` | branch is not protected                                                   | ALLOW                              |
 | `repo_delete_branch` | branch is protected                                                       | BLOCK (`PROTECTED_BRANCH`)       |
 | any tool               | arguments fail schema validation                                          | BLOCK (`INVALID_ARGUMENTS`)      |
-| any tool               | rate limit exceeded (value to be set in Stage 3)                          | BLOCK (`RATE_LIMIT_EXCEEDED`)    |
+| any tool               | rate limit exceeded: 30 calls per agent per minute, burst of 10 (settings `RATE_LIMIT_CALLS_PER_MINUTE`, `RATE_LIMIT_BURST`) | BLOCK (`RATE_LIMIT_EXCEEDED`)    |
+| `delete_resource`, `disable_monitoring` | `env` ≠ `prod` (still always blocked)                   | BLOCK (`DESTRUCTIVE_TOOL_DENIED`) |
 
 All numbers above are placeholders to be tuned against the synthetic data.
 
@@ -163,7 +164,8 @@ All numbers above are placeholders to be tuned against the synthetic data.
 | P-010 | `SECRETS_ACCESS_DENIED`   | Secrets tool called → always BLOCK, no allow condition        |
 | P-011 | `APPROVAL_REQUIRED`       | High-impact action or over-threshold value → REQUIRE_APPROVAL |
 | P-012 | `RATE_LIMIT_EXCEEDED`     | Too many calls in the window → BLOCK                          |
-| P-013 | `POLICY_UNAVAILABLE`      | Policy engine or gateway unavailable → BLOCK (fail closed)    |
+| P-013 | `POLICY_UNAVAILABLE`      | Policy engine or gateway unavailable → BLOCK (fail closed). No read-only exceptions |
+| P-014 | `DESTRUCTIVE_TOOL_DENIED` | Delete / disable outside production → BLOCK (added in Stage 3) |
 
 ---
 
