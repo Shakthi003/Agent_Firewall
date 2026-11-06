@@ -20,6 +20,7 @@ from starlette.applications import Starlette
 
 from core.config import Settings, get_settings
 from core.db import make_engine
+from gateway.approvals.store import ApprovalStore
 from gateway.identity.registry import AgentRegistry
 from gateway.mcp_gateway.audit import LoggingAuditSink
 from gateway.mcp_gateway.downstream import (
@@ -43,8 +44,11 @@ async def build_gateway(
     connector: Connector | None = None,
     policy_path: Path | None = None,
 ) -> Starlette:
-    registry = AgentRegistry(make_engine(database_url or settings.database_url))
+    engine = make_engine(database_url or settings.database_url)
+    registry = AgentRegistry(engine)
     registry.create_tables()
+    approvals = ApprovalStore(engine, expiry_seconds=settings.approval_expiry_minutes * 60)
+    approvals.create_tables()
     downstream = Downstream(connector or http_connector(settings))
     tools = ToolRegistry.load()
     catalog = await load_catalog(tools, downstream)
@@ -63,6 +67,7 @@ async def build_gateway(
         downstream=downstream,
         policy=policy,
         audit=LoggingAuditSink(),
+        approvals=approvals,
         call_timeout=settings.gateway_call_timeout_seconds,
     )
     return gateway.build_app(host=settings.gateway_host)

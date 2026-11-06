@@ -1,0 +1,12 @@
+# Opt-in: publish the approver API on localhost so a human can approve from the host.
+#
+#   docker compose -f infra/docker-compose.yml -f infra/docker-compose.approver-host.yml up -d
+#
+# WARNING: a published port is also reachable from other Docker networks by the container's IP
+# (tests/integration/test_network_isolation.py showed this), so with this file an agent container
+# can open a connection to the approver API. It still needs the approver password, and an agent
+# API key is refused, but the network-level separation is gone. Use it for local demos only.
+services:
+  approver-api:
+    ports:
+      - "127.0.0.1:${API_PORT:-8000}:8000"

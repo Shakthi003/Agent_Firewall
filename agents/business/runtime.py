@@ -15,6 +15,7 @@ from typing import Any
 
 from mcp.client import Client
 
+from agents.business.gateway_client import call_tool_with_approval
 from core.llm import ChatModel, Message, ToolCall, ToolResult, ToolSpec
 
 DEFAULT_MAX_STEPS = 10
@@ -47,11 +48,14 @@ async def run_agent(
     allowed_tools: Collection[str],
     task: str,
     max_steps: int = DEFAULT_MAX_STEPS,
+    approval_wait_seconds: float = 0.0,
+    approval_poll_seconds: float = 2.0,
 ) -> AgentRun:
     """Run one task. Every client must already be connected (inside `async with`).
 
     An agent may use tools from several servers. Each allowed tool is routed to the first
-    client that lists it.
+    client that lists it. When the gateway pauses a call for human approval, the call is retried
+    with the approval ID for up to `approval_wait_seconds` (0 means do not wait).
     """
     specs: list[ToolSpec] = []
     routes: dict[str, Client] = {}
@@ -74,17 +78,32 @@ async def run_agent(
         if not reply.tool_calls:
             run.final_text = reply.text
             return run
-        results = [await _execute(routes, call, run) for call in reply.tool_calls]
+        results = [
+            await _execute(routes, call, run, approval_wait_seconds, approval_poll_seconds)
+            for call in reply.tool_calls
+        ]
         messages.append(Message(role="tool", tool_results=tuple(results)))
     raise AgentStepLimitError(f"No final answer after {max_steps} steps")
 
 
-async def _execute(routes: dict[str, Client], call: ToolCall, run: AgentRun) -> ToolResult:
+async def _execute(
+    routes: dict[str, Client],
+    call: ToolCall,
+    run: AgentRun,
+    approval_wait_seconds: float,
+    approval_poll_seconds: float,
+) -> ToolResult:
     if call.name not in routes:
         content: dict[str, Any] = {"error": f"Tool {call.name} is not available to this agent"}
         is_error = True
     else:
-        result = await routes[call.name].call_tool(call.name, call.args)
+        result = await call_tool_with_approval(
+            routes[call.name],
+            call.name,
+            call.args,
+            wait_seconds=approval_wait_seconds,
+            poll_seconds=approval_poll_seconds,
+        )
         is_error = result.is_error
         content = _result_content(result)
     run.calls.append(CallRecord(call.name, call.args, content, is_error))

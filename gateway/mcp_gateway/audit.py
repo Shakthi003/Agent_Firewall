@@ -14,7 +14,7 @@ from dataclasses import asdict, dataclass, field
 from typing import Any, Literal, Protocol
 
 ExecutionStatus = Literal["not_executed", "ok", "tool_error", "timeout", "error"]
-Method = Literal["tools/list", "tools/call"]
+Method = Literal["tools/list", "tools/call", "approval/decide"]
 
 logger = logging.getLogger("agent_firewall.audit")
 
@@ -40,6 +40,8 @@ class AuditEvent:
     execution_status: ExecutionStatus = "not_executed"
     latency_ms: float = 0.0
     tool_count: int | None = None  # tools/list only: how many tools were returned
+    approval_id: str | None = None  # Stage 4: the approval this call created or spent
+    approver_id: str | None = None  # Stage 4: who approved or rejected (approval/decide only)
     extra: dict[str, Any] = field(default_factory=dict)
 
 

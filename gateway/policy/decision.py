@@ -34,6 +34,14 @@ POLICY_UNAVAILABLE = "POLICY_UNAVAILABLE"  # P-013
 DESTRUCTIVE_TOOL_DENIED = "DESTRUCTIVE_TOOL_DENIED"  # P-014
 POLICY_ALLOWED = "ALLOWED_BY_POLICY"  # the reason code of every ALLOW from the rule engine
 ALLOW_ALL = "ALLOW_ALL"  # Stage 2 test double only: no rules are applied
+# Stage 4: what happens to a call that carries an approval ID (not allowed in policy files).
+APPROVAL_GRANTED = "APPROVAL_GRANTED"  # a valid approval was spent; the stored request ran
+APPROVAL_PENDING = "APPROVAL_PENDING"  # not decided yet
+APPROVAL_REJECTED = "APPROVAL_REJECTED"
+APPROVAL_EXPIRED = "APPROVAL_EXPIRED"
+APPROVAL_ALREADY_USED = "APPROVAL_ALREADY_USED"  # replay
+APPROVAL_MISMATCH = "APPROVAL_MISMATCH"  # different tool or arguments than were approved
+APPROVAL_INVALID = "APPROVAL_INVALID"  # unknown, malformed, or another agent's approval
 DOWNSTREAM_TIMEOUT = "DOWNSTREAM_TIMEOUT"  # execution failed after an ALLOW
 DOWNSTREAM_ERROR = "DOWNSTREAM_ERROR"  # execution failed after an ALLOW
 

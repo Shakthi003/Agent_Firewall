@@ -8,6 +8,7 @@ tests prove that a denied call never reached a downstream server.
 from __future__ import annotations
 
 import asyncio
+import time
 from collections.abc import AsyncIterator
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from dataclasses import dataclass, field
@@ -20,8 +21,10 @@ from mcp.client.streamable_http import streamable_http_client
 from mcp_types import CallToolResult
 from starlette.applications import Starlette
 
+from apps.api.main import create_app as create_approver_app
 from core.db import make_engine
 from core.seed_generator import generate_all
+from gateway.approvals.store import ApprovalStore
 from gateway.identity.registry import AgentRegistry, IssuedKey
 from gateway.mcp_gateway.audit import InMemoryAuditSink
 from gateway.mcp_gateway.downstream import Downstream, load_catalog
@@ -36,6 +39,8 @@ from mcp_servers.developer_tools.server import create_server as create_developer
 from mcp_servers.operations.server import create_server as create_operations
 
 BASE_URL = "http://127.0.0.1:8080/mcp"
+APPROVER_USER = "approver"
+APPROVER_PASSWORD = "test-approver-password"  # noqa: S105  # secret-scan: ignore
 
 
 @dataclass
@@ -78,10 +83,29 @@ class GatewayHarness:
     # Seconds every downstream connection waits before it opens (to test the call timeout).
     delay: dict[str, float] = field(default_factory=lambda: {"seconds": 0.0})
     catalog: dict[str, Any] = field(default_factory=dict)  # tool name -> MCP Tool definition
+    approvals: ApprovalStore | None = None
+    # The approval clock: tests move it to expire approvals.
+    now: dict[str, float] = field(default_factory=lambda: {"t": time.time()})
 
     def client(self, key: str | None) -> AbstractAsyncContextManager[Client]:
         """A standard MCP client talking to the gateway with this bearer key."""
         return client_for(self.app, key)
+
+    def approver_api(self) -> Any:
+        """A test client for the approver API, on the same store and audit log as the gateway."""
+        from fastapi.testclient import TestClient
+
+        assert self.approvals is not None
+        api = create_approver_app(
+            self.approvals,
+            self.audit,
+            username=APPROVER_USER,
+            password=APPROVER_PASSWORD,  # secret-scan: ignore
+            clock=lambda: self.now["t"],
+        )
+        client = TestClient(api)
+        client.auth = (APPROVER_USER, APPROVER_PASSWORD)
+        return client
 
 
 def client_for(app: Starlette, key: str | None) -> AbstractAsyncContextManager[Client]:
@@ -105,6 +129,7 @@ async def running_gateway(
     limiter: TokenBucketRateLimiter | None = None,
     call_timeout: float = 5.0,
     tools: ToolRegistry | None = None,
+    expiry_seconds: int = 900,
 ) -> AsyncIterator[GatewayHarness]:
     """`rules=True` runs the real Stage 3 engine on `policies/policy.yaml`. The limiter defaults
     to a roomy one so that tests which make many calls do not trip the rate limit."""
@@ -128,8 +153,12 @@ async def running_gateway(
     tools = tools or ToolRegistry.load()
     catalog = await load_catalog(tools, downstream)
 
-    registry = AgentRegistry(make_engine("sqlite://"))
+    engine = make_engine("sqlite://")
+    registry = AgentRegistry(engine)
     registry.create_tables()
+    now: dict[str, float] = {"t": time.time()}
+    approvals = ApprovalStore(engine, expiry_seconds=expiry_seconds, clock=lambda: now["t"])
+    approvals.create_tables()
     audit = InMemoryAuditSink()
     if rules and policy is None:
         policy = RuleEngine.from_file(
@@ -146,6 +175,7 @@ async def running_gateway(
         downstream=downstream,
         policy=policy or AllowAllPolicy(),
         audit=audit,
+        approvals=approvals,
         call_timeout=call_timeout,
     )
     app = gateway.build_app()
@@ -167,7 +197,9 @@ async def running_gateway(
     holder = asyncio.create_task(hold_lifespan())
     await ready.wait()
     try:
-        yield GatewayHarness(app, registry, audit, downstream, keys, delay, dict(catalog))
+        yield GatewayHarness(
+            app, registry, audit, downstream, keys, delay, dict(catalog), approvals, now
+        )
     finally:
         stop.set()
         await holder

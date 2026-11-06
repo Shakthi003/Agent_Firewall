@@ -1,4 +1,4 @@
-"""The MCP Security Gateway (Stage 2).
+"""The MCP Security Gateway (Stage 2, approvals added in Stage 4).
 
 An MCP server facing the agents and an MCP client facing the three downstream servers. A
 standard MCP client works against it unmodified (`tools/list`, `tools/call`).
@@ -10,6 +10,11 @@ failed step ends the request:
     2. identity (P-002)        6. policy decision (rate limit, then the YAML rules)
     3. tool registered (P-001) 7. forward downstream, with a timeout
     4. tool granted (P-003)    8. audit event, then return a result or a safe denial
+
+Approvals (Stage 4): on `REQUIRE_APPROVAL` the gateway stores the request and returns "pending"
+with an approval ID. The agent retries the same call with that ID in the request's `_meta`
+(`approval_id`). The policy is evaluated again first; only if it still says `REQUIRE_APPROVAL`
+is the approval spent (once), and the stored request is what runs. Any failure is a denial.
 
 Safe means: agents get a decision, a reason code and a correlation ID. They never get a stack
 trace, a policy rule or a database error. Details go to the server-side log and the audit event.
@@ -23,6 +28,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import time
 import uuid
 from collections.abc import Callable, Mapping
@@ -43,12 +49,20 @@ from mcp_types import (
 )
 from starlette.applications import Starlette
 
+from gateway.approvals.store import ApprovalError, ApprovalStore, ErrorCode
 from gateway.identity.middleware import IdentityMiddleware, auth_result
 from gateway.identity.registry import AgentRegistry, AuthResult, Identity
 from gateway.mcp_gateway.audit import AuditEvent, AuditSink, ExecutionStatus, hash_args
 from gateway.mcp_gateway.downstream import CORRELATION_META_KEY, Downstream
 from gateway.mcp_gateway.tools import ToolRegistry
 from gateway.policy.decision import (
+    APPROVAL_ALREADY_USED,
+    APPROVAL_EXPIRED,
+    APPROVAL_GRANTED,
+    APPROVAL_INVALID,
+    APPROVAL_MISMATCH,
+    APPROVAL_PENDING,
+    APPROVAL_REJECTED,
     APPROVAL_REQUIRED,
     DOWNSTREAM_ERROR,
     DOWNSTREAM_TIMEOUT,
@@ -68,6 +82,22 @@ logger = logging.getLogger(__name__)
 GATEWAY_NAME = "agent-firewall-gateway"
 DEFAULT_CALL_TIMEOUT_SECONDS = 30.0
 DECISIONS = frozenset(get_args(Decision))
+APPROVAL_META_KEY = "approval_id"
+_APPROVAL_ID = re.compile(r"^[0-9a-f]{32}$")
+
+# What a failed approval check means for the agent: (reason code, decision). A request that is
+# merely not decided yet stays REQUIRE_APPROVAL so the agent keeps waiting; the rest are final.
+_APPROVAL_FAILURES: dict[ErrorCode, tuple[str, Decision]] = {
+    "PENDING": (APPROVAL_PENDING, "REQUIRE_APPROVAL"),
+    "REJECTED": (APPROVAL_REJECTED, "BLOCK"),
+    "EXPIRED": (APPROVAL_EXPIRED, "BLOCK"),
+    "USED": (APPROVAL_ALREADY_USED, "BLOCK"),
+    "MISMATCH": (APPROVAL_MISMATCH, "BLOCK"),
+    "INVALID": (APPROVAL_INVALID, "BLOCK"),
+    "NOT_FOUND": (APPROVAL_INVALID, "BLOCK"),
+    "NOT_PENDING": (APPROVAL_INVALID, "BLOCK"),
+    "SELF_APPROVAL": (APPROVAL_INVALID, "BLOCK"),
+}
 
 # Payload fields that claim an identity. They are never trusted.
 IDENTITY_FIELDS = frozenset(
@@ -93,6 +123,12 @@ _MESSAGES = {
     POLICY_UNAVAILABLE: "The request could not be checked, so it was not run.",
     RATE_LIMIT_EXCEEDED: "Too many requests. Wait and try again.",
     APPROVAL_REQUIRED: "This action needs human approval and was not run.",
+    APPROVAL_PENDING: "Still waiting for a human decision. The action was not run.",
+    APPROVAL_REJECTED: "A human rejected this action. It was not run.",
+    APPROVAL_EXPIRED: "The approval expired. The action was not run.",
+    APPROVAL_ALREADY_USED: "This approval was already used. The action was not run.",
+    APPROVAL_MISMATCH: "The request does not match what was approved. It was not run.",
+    APPROVAL_INVALID: "This approval is not valid for this request. It was not run.",
     DOWNSTREAM_TIMEOUT: "The tool took too long to answer.",
     DOWNSTREAM_ERROR: "The tool could not be reached.",
 }
@@ -108,6 +144,7 @@ class Gateway:
         downstream: Downstream,
         policy: PolicyEngine,
         audit: AuditSink,
+        approvals: ApprovalStore | None = None,
         call_timeout: float = DEFAULT_CALL_TIMEOUT_SECONDS,
         clock: Callable[[], float] = time.time,
     ) -> None:
@@ -124,6 +161,7 @@ class Gateway:
         self._downstream = downstream
         self._policy = policy
         self._audit = audit
+        self._approvals = approvals  # None: REQUIRE_APPROVAL is a plain denial, as in Stage 3
         self._call_timeout = call_timeout
         self._clock = clock
 
@@ -209,6 +247,7 @@ class Gateway:
             *,
             status: ExecutionStatus = "not_executed",
             policy_version: str | None = None,
+            approval_id: str | None = None,
         ) -> None:
             self._audit.record(
                 AuditEvent(
@@ -230,6 +269,7 @@ class Gateway:
                     spoof_attempt=_is_spoof_attempt(spoofed, identity),
                     execution_status=status,
                     latency_ms=_ms_since(started),
+                    approval_id=approval_id,
                 )
             )
 
@@ -237,6 +277,7 @@ class Gateway:
             finish(decision, reason)
             return _denial(decision, reason, cid)
 
+        requested_approval: str | None = None
         try:
             if identity is None:
                 return deny(UNREGISTERED_AGENT)
@@ -249,6 +290,11 @@ class Gateway:
             clean_args = self._without_identity_fields(tool, args)
             if not self._arguments_valid(tool, clean_args):
                 return deny(INVALID_ARGUMENTS)
+            raw_approval = (params.meta or {}).get(APPROVAL_META_KEY)
+            if raw_approval is not None:
+                if not isinstance(raw_approval, str) or not _APPROVAL_ID.match(raw_approval):
+                    return deny(APPROVAL_INVALID)
+                requested_approval = raw_approval
             decision = self._policy.evaluate(identity, tool, clean_args)
             # Only a well-formed decision is acted on. Anything else is a policy fault.
             if not isinstance(decision, PolicyDecision) or decision.decision not in DECISIONS:
@@ -258,7 +304,51 @@ class Gateway:
             logger.exception("gateway pipeline failed before forwarding (correlation %s)", cid)
             return deny(POLICY_UNAVAILABLE)
 
-        if decision.decision != "ALLOW":
+        approval_id: str | None = None
+        if decision.decision == "REQUIRE_APPROVAL" and self._approvals is not None:
+            version = decision.policy_version
+            try:
+                if requested_approval is None:
+                    pending = self._approvals.create(
+                        identity,
+                        tool=tool,
+                        server=entry.server,
+                        args=clean_args,
+                        reason_code=decision.reason_code,
+                        policy_version=version,
+                        correlation_id=cid,
+                    )
+                    finish(
+                        "REQUIRE_APPROVAL",
+                        decision.reason_code,
+                        policy_version=version,
+                        approval_id=pending.approval_id,
+                    )
+                    return _denial(
+                        "REQUIRE_APPROVAL",
+                        decision.reason_code,
+                        cid,
+                        approval_id=pending.approval_id,
+                        expires_at=pending.expires_at,
+                    )
+                stored = self._approvals.consume(
+                    requested_approval,
+                    agent_id=identity.agent_id,
+                    tool=tool,
+                    args_hash=hash_args(clean_args),
+                )
+            except ApprovalError as err:
+                reason, outcome = _APPROVAL_FAILURES[err.code]
+                finish(outcome, reason, policy_version=version, approval_id=requested_approval)
+                return _denial(outcome, reason, cid, approval_id=requested_approval)
+            except Exception:
+                logger.exception("approval handling failed (correlation %s)", cid)
+                return deny(POLICY_UNAVAILABLE)
+            # A valid approval: run exactly the request that was stored and approved.
+            approval_id = stored.approval_id
+            clean_args = stored.args
+            decision = PolicyDecision("ALLOW", APPROVAL_GRANTED, version)
+        elif decision.decision != "ALLOW":
             finish(decision.decision, decision.reason_code, policy_version=decision.policy_version)
             return _denial(decision.decision, decision.reason_code, cid)
 
@@ -272,19 +362,48 @@ class Gateway:
                 timeout=self._call_timeout,
             )
         except TimeoutError:
-            finish("ALLOW", decision.reason_code, status="timeout", policy_version=version)
+            self._record_execution(approval_id, "timeout")
+            finish(
+                "ALLOW",
+                decision.reason_code,
+                status="timeout",
+                policy_version=version,
+                approval_id=approval_id,
+            )
             return _denial("ALLOW", DOWNSTREAM_TIMEOUT, cid)
         except Exception:
             logger.exception("downstream call failed (correlation %s, tool %s)", cid, tool)
-            finish("ALLOW", decision.reason_code, status="error", policy_version=version)
+            self._record_execution(approval_id, "error")
+            finish(
+                "ALLOW",
+                decision.reason_code,
+                status="error",
+                policy_version=version,
+                approval_id=approval_id,
+            )
             return _denial("ALLOW", DOWNSTREAM_ERROR, cid)
 
         status: ExecutionStatus = "tool_error" if result.is_error else "ok"
-        finish("ALLOW", decision.reason_code, status=status, policy_version=version)
+        self._record_execution(approval_id, status)
+        finish(
+            "ALLOW",
+            decision.reason_code,
+            status=status,
+            policy_version=version,
+            approval_id=approval_id,
+        )
         meta = {**(result.meta or {}), CORRELATION_META_KEY: cid}
         return result.model_copy(update={"meta": meta})
 
     # ---- helpers
+
+    def _record_execution(self, approval_id: str | None, status: str) -> None:
+        if approval_id is None or self._approvals is None:
+            return
+        try:
+            self._approvals.record_execution(approval_id, status)
+        except Exception:
+            logger.exception("could not record the execution result of approval %s", approval_id)
 
     def _arguments_valid(self, tool: str, args: dict[str, Any]) -> bool:
         return self._validators[tool].is_valid(args)
@@ -321,17 +440,23 @@ def _auth_for(ctx: ServerRequestContext[Any]) -> AuthResult:
     return auth_result(request.scope)
 
 
-def _payload(decision: str, reason: str, correlation_id: str) -> dict[str, str]:
-    return {
+def _payload(
+    decision: str, reason: str, correlation_id: str, **extra: str | int | None
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
         "decision": decision,
         "reason_code": reason,
         "correlation_id": correlation_id,
         "message": _MESSAGES.get(reason, "The request was not run."),
     }
+    payload.update({k: v for k, v in extra.items() if v is not None})
+    return payload
 
 
-def _denial(decision: str, reason: str, correlation_id: str) -> CallToolResult:
-    payload = _payload(decision, reason, correlation_id)
+def _denial(
+    decision: str, reason: str, correlation_id: str, **extra: str | int | None
+) -> CallToolResult:
+    payload = _payload(decision, reason, correlation_id, **extra)
     return CallToolResult(
         content=[TextContent(text=json.dumps(payload))],
         structured_content=payload,

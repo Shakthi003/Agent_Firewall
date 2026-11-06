@@ -3,9 +3,13 @@ name: agent-firewall
 # Stage 2 network boundary (docs/architecture.md section 7).
 #
 #   agent_net     agents + gateway          the only network an agent can see
-#   internal_net  gateway + MCP servers + PostgreSQL     no route from agents
+#   internal_net  gateway + MCP servers + PostgreSQL + approver API     no route from agents
 #
 # Only the gateway is on both networks. The MCP servers publish no ports to the host.
+# The approver API (Stage 4) is for humans: it is on internal_net only and publishes NO port by
+# default. A published port is reachable from other Docker networks by container IP (tested),
+# which would give agents a route to it. To approve from the host, opt in with the override:
+#   docker compose -f infra/docker-compose.yml -f infra/docker-compose.approver-host.yml up -d
 # Start the protected stack:   docker compose -f infra/docker-compose.yml up -d --build
 # Start the UNPROTECTED baseline (agents reach the servers directly, for comparison):
 #   docker compose -f infra/docker-compose.yml --profile baseline up -d --build
@@ -82,6 +86,26 @@ services:
     networks: [agent_net, internal_net]
     healthcheck:
       test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1', 8080), 2)"]
+      <<: *socket-check
+
+  # Stage 4: where a human approves or rejects paused requests. Same database as the gateway.
+  approver-api:
+    <<: *app
+    command: ["python", "-m", "apps.api"]
+    environment:
+      API_HOST: 0.0.0.0
+      POSTGRES_HOST: postgres
+      POSTGRES_USER: ${POSTGRES_USER:-agentfirewall}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-agentfirewall}
+      APPROVER_USERNAME: ${APPROVER_USERNAME:-approver}
+      APPROVER_PASSWORD: ${APPROVER_PASSWORD:?set APPROVER_PASSWORD in .env}
+      APPROVAL_EXPIRY_MINUTES: ${APPROVAL_EXPIRY_MINUTES:-15}
+    depends_on:
+      gateway: {condition: service_healthy}  # the gateway creates the tables first
+    networks: [internal_net]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1', 8000), 2)"]
       <<: *socket-check
 
   # The protected agent: attached to agent_net only, so the only thing it can reach is the gateway.

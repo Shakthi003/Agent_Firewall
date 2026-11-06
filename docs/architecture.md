@@ -160,7 +160,7 @@ Approvals expire after 15 minutes by default (configurable). The polling and ret
 | Network | Members | Purpose |
 | ------- | ------- | ------- |
 | `agent_net` | business agents, gateway | The only network agents can see |
-| `internal_net` | gateway, downstream MCP servers, PostgreSQL, API | No route from agents; downstream ports are not published to the host |
+| `internal_net` | gateway, downstream MCP servers, PostgreSQL, approver API | No route from agents; downstream and approver API ports are not published to the host |
 
 - Only the gateway is on both networks.
 - A test runs from inside an agent container and proves every downstream server is unreachable.
@@ -201,3 +201,35 @@ Approvals expire after 15 minutes by default (configurable). The polling and ret
 - The gateway does not start if the registry file is invalid, the database is unreachable, or an approved tool is missing from its downstream server.
 
 **Network proof (AC-11):** `tests/integration/test_network_isolation.py` starts the real Compose stack under its own project name and checks from inside the agent container that the gateway is reachable, and that each MCP server and PostgreSQL are not, by name and by IP address. It also checks no downstream port is published to the host, and that the `agent-baseline` container (the deliberately unprotected profile) can reach a server directly. The test is skipped when no Docker daemon is available.
+
+
+---
+
+## 10. Stage 4 as built (human-in-the-loop approval)
+
+| Part | Where | What it does |
+| ---- | ----- | ------------ |
+| Approval store | `gateway/approvals/store.py` | The `approvals` table: exact request (tool, arguments, requester), argument hash, policy reason and version, status, expiry, approver, execution result. `create`, `decide`, `consume`, `list_pending` |
+| Gateway | `gateway/mcp_gateway/server.py` | On `REQUIRE_APPROVAL`: stores the request, returns "pending" with `approval_id` and `expires_at`. On a retry with the ID in `_meta.approval_id`: evaluates policy again, then spends the approval |
+| Approver API | `apps/api/main.py`, `python -m apps.api` | FastAPI: `GET /approvals/pending`, `GET /approvals/{id}`, `POST /approvals/{id}/approve`, `POST /approvals/{id}/reject`. HTTP Basic login from `APPROVER_USERNAME` / `APPROVER_PASSWORD` |
+| Agent helper | `agents/business/gateway_client.py` | `call_tool_with_approval`: calls, and if the gateway says "pending" retries with the approval ID until a final answer or the wait runs out. `run_agent` uses it, with `approval_wait_seconds` (default 0: do not wait) |
+
+**Rules, and where each is enforced**
+
+- **Bound to the exact request:** a retry must be the same agent, the same tool and the same argument hash (`APPROVAL_MISMATCH` otherwise). What runs is the stored arguments, not the retry's.
+- **Policy re-checked:** the retry goes through the full pipeline first. If the rules now say BLOCK, the call is blocked and the approval stays unspent. If they no longer ask for approval, the call is evaluated on its own merits.
+- **One use:** `consume` is one conditional `UPDATE ... WHERE status = 'approved'`, so two concurrent retries cannot both succeed (`APPROVAL_ALREADY_USED`).
+- **Expiry:** `expires_at = created + APPROVAL_EXPIRY_MINUTES` (default 15). Status "expired" is derived from the clock, so an old row is dead even if nothing touched it.
+- **Who decides:** only the approver login. Agent API keys are rejected by the approver API, and the gateway exposes no approval tool. The store also refuses a decision when the approver ID equals the requesting agent's ID.
+- **No double decision:** an approved request cannot be rejected afterwards or the reverse (`409`).
+- **Audit:** the pause, the human decision (`approval/decide`, with `approver_id`, time and the requester) and the execution result are separate audit events sharing `approval_id`. Argument values never go in the audit log.
+- **Safe errors:** agents see `APPROVAL_PENDING`, `APPROVAL_REJECTED`, `APPROVAL_EXPIRED`, `APPROVAL_ALREADY_USED`, `APPROVAL_MISMATCH` or `APPROVAL_INVALID` (unknown, malformed or someone else's ID: deliberately not told apart).
+
+**Choices worth knowing**
+
+- The same agent asking again for the same pending request gets the same `approval_id`, so an agent that loops cannot flood the approver.
+- The approval ID travels in the MCP `_meta` field, not in the tool arguments, so tool schemas and the strict argument check are unchanged and a standard MCP client still works.
+- With no `ApprovalStore` given, the gateway behaves exactly as in Stage 3 (`REQUIRE_APPROVAL` is a plain denial).
+- **Docker:** `approver-api` is a Compose service on `internal_net` only, sharing the gateway's database. It publishes **no port** by default. A live probe showed that a published port is reachable from other Docker networks by container IP (PostgreSQL's dev port is too), which would give agents a network route to the approve endpoint. A test now proves the agent cannot reach it by name or IP. To approve from the host, opt in with `-f infra/docker-compose.approver-host.yml`, which publishes it on `127.0.0.1` and says what that costs.
+- **Outside Docker:** `uv run python -m apps.api` against the gateway's database. The React dashboard (Stage 7) will call it.
+- **Live run:** the real gateway, approver API and three MCP servers as separate processes over HTTP, first on SQLite and then on PostgreSQL 16 in Docker. Both runs behaved as in the tests: login required (an agent key gets 401), pending, mismatch, approve, run once with the downstream result, replay refused, rejection refused. The PostgreSQL rows show one `used` / `approver` / `ok` and one `rejected`. The audit lines and the check that no argument value appears in any log line were read on the SQLite run only.

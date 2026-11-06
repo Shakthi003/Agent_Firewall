@@ -1,4 +1,4 @@
-# One image for the gateway, the mock MCP servers and the demo agent (Stage 2).
+# One image for the gateway, the approver API, the mock MCP servers and the demo agent.
 # The command is chosen per service in infra/docker-compose.yml.
 FROM python:3.11-slim
 
@@ -16,6 +16,7 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
 
 COPY core ./core
+COPY apps ./apps
 COPY agents ./agents
 COPY gateway ./gateway
 COPY policies ./policies

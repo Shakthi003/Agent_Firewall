@@ -54,6 +54,7 @@ def _compose(*args: str, check: bool = True) -> subprocess.CompletedProcess[str]
         **os.environ,
         # Throwaway values: this stack is private to the test and thrown away afterwards.
         "POSTGRES_PASSWORD": "nettest-only-password",
+        "APPROVER_PASSWORD": "nettest-only-approver",  # secret-scan: ignore
         "POSTGRES_PORT": "55432",
     }
     return subprocess.run(
@@ -113,6 +114,19 @@ def test_agent_cannot_reach_downstream_by_ip(stack: None, name: str, port: int) 
 
 def test_agent_cannot_reach_postgres(stack: None) -> None:
     assert _probe("agent", "postgres", 5432).startswith("UNREACHABLE")
+
+
+def test_agent_cannot_reach_the_approver_api(stack: None) -> None:
+    """Approvals are for humans: an agent must have no route to the approve endpoint."""
+    assert _probe("agent", "approver-api", 8000).startswith("UNREACHABLE")
+    ip = _container_ip("approver-api", "internal_net")
+    assert _probe("agent", ip, 8000).startswith("UNREACHABLE")
+
+
+def test_the_approver_api_publishes_no_port_by_default(stack: None) -> None:
+    """A published port is reachable from other networks by container IP, so none is published."""
+    published = _compose("port", "approver-api", "8000", check=False).stdout.strip()
+    assert published == "", f"approver-api publishes port 8000 to the host: {published}"
 
 
 def test_downstream_ports_are_not_published_to_the_host(stack: None) -> None:
