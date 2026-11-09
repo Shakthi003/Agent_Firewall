@@ -76,6 +76,7 @@ from gateway.policy.decision import (
     PolicyDecision,
     PolicyEngine,
 )
+from monitoring.audit.redact import sanitize_args
 
 logger = logging.getLogger(__name__)
 
@@ -201,6 +202,15 @@ class Gateway:
         self._record_list(cid, started, auth.identity, auth, "ALLOW", "TOOLS_LISTED", len(names))
         return ListToolsResult(tools=[self._catalog[n] for n in names])
 
+    def _emit(self, event: AuditEvent) -> None:
+        """Write one audit event. A failure is logged loudly but never raised: by the time an
+        event is written the decision is made, and a request that already ran must still get its
+        answer. Calls are kept from running with an unusable audit store by `check()` instead."""
+        try:
+            self._audit.record(event)
+        except Exception:
+            logger.exception("AUDIT WRITE FAILED (correlation %s)", event.correlation_id)
+
     def _record_list(
         self,
         cid: str,
@@ -211,7 +221,7 @@ class Gateway:
         reason: str,
         count: int | None,
     ) -> None:
-        self._audit.record(
+        self._emit(
             AuditEvent(
                 timestamp=self._clock(),
                 correlation_id=cid,
@@ -249,7 +259,7 @@ class Gateway:
             policy_version: str | None = None,
             approval_id: str | None = None,
         ) -> None:
-            self._audit.record(
+            self._emit(
                 AuditEvent(
                     timestamp=self._clock(),
                     correlation_id=cid,
@@ -265,6 +275,10 @@ class Gateway:
                     policy_version=policy_version,
                     args_hash=hash_args(args),
                     arg_names=tuple(sorted(str(k) for k in args)),
+                    # Claimed identities are not stored (only their field names, below).
+                    sanitized_args=sanitize_args(
+                        {k: v for k, v in args.items() if str(k) not in spoofed}
+                    ),
                     spoofed_fields=tuple(sorted(spoofed)),
                     spoof_attempt=_is_spoof_attempt(spoofed, identity),
                     execution_status=status,
@@ -295,6 +309,8 @@ class Gateway:
                 if not isinstance(raw_approval, str) or not _APPROVAL_ID.match(raw_approval):
                     return deny(APPROVAL_INVALID)
                 requested_approval = raw_approval
+            # No audit, no call (P-013): if events cannot be recorded, nothing is forwarded.
+            self._audit.check()
             decision = self._policy.evaluate(identity, tool, clean_args)
             # Only a well-formed decision is acted on. Anything else is a policy fault.
             if not isinstance(decision, PolicyDecision) or decision.decision not in DECISIONS:

@@ -26,7 +26,7 @@ from core.db import make_engine
 from core.seed_generator import generate_all
 from gateway.approvals.store import ApprovalStore
 from gateway.identity.registry import AgentRegistry, IssuedKey
-from gateway.mcp_gateway.audit import InMemoryAuditSink
+from gateway.mcp_gateway.audit import AuditSink, FanOutAuditSink, InMemoryAuditSink
 from gateway.mcp_gateway.downstream import Downstream, load_catalog
 from gateway.mcp_gateway.server import Gateway
 from gateway.mcp_gateway.tools import ToolRegistry
@@ -37,6 +37,9 @@ from gateway.policy.rate_limit import TokenBucketRateLimiter
 from mcp_servers.company_data.server import create_server as create_company_data
 from mcp_servers.developer_tools.server import create_server as create_developer_tools
 from mcp_servers.operations.server import create_server as create_operations
+from monitoring.audit.store import AuditStore
+from monitoring.detection.alerts import AlertStore, MonitoredAuditSink
+from monitoring.detection.rules import BehaviourMonitor
 
 BASE_URL = "http://127.0.0.1:8080/mcp"
 APPROVER_USER = "approver"
@@ -84,6 +87,8 @@ class GatewayHarness:
     delay: dict[str, float] = field(default_factory=lambda: {"seconds": 0.0})
     catalog: dict[str, Any] = field(default_factory=dict)  # tool name -> MCP Tool definition
     approvals: ApprovalStore | None = None
+    audit_store: AuditStore | None = None  # the real hash-chained log, written alongside `audit`
+    alerts: AlertStore | None = None
     # The approval clock: tests move it to expire approvals.
     now: dict[str, float] = field(default_factory=lambda: {"t": time.time()})
 
@@ -95,10 +100,10 @@ class GatewayHarness:
         """A test client for the approver API, on the same store and audit log as the gateway."""
         from fastapi.testclient import TestClient
 
-        assert self.approvals is not None
+        assert self.approvals is not None and self.audit_store is not None
         api = create_approver_app(
             self.approvals,
-            self.audit,
+            FanOutAuditSink([self.audit, self.audit_store]),
             username=APPROVER_USER,
             password=APPROVER_PASSWORD,  # secret-scan: ignore
             clock=lambda: self.now["t"],
@@ -130,6 +135,8 @@ async def running_gateway(
     call_timeout: float = 5.0,
     tools: ToolRegistry | None = None,
     expiry_seconds: int = 900,
+    audit_override: AuditSink | None = None,
+    monitor: BehaviourMonitor | None = None,
 ) -> AsyncIterator[GatewayHarness]:
     """`rules=True` runs the real Stage 3 engine on `policies/policy.yaml`. The limiter defaults
     to a roomy one so that tests which make many calls do not trip the rate limit."""
@@ -160,6 +167,12 @@ async def running_gateway(
     approvals = ApprovalStore(engine, expiry_seconds=expiry_seconds, clock=lambda: now["t"])
     approvals.create_tables()
     audit = InMemoryAuditSink()
+    audit_store = AuditStore(engine)
+    audit_store.create_tables()
+    alerts = AlertStore(engine)
+    alerts.create_tables()
+    scored = MonitoredAuditSink(audit_store, alerts, monitor or BehaviourMonitor())
+    sink = FanOutAuditSink([audit, scored])
     if rules and policy is None:
         policy = RuleEngine.from_file(
             default_policy_path("policies"),
@@ -174,7 +187,7 @@ async def running_gateway(
         catalog=catalog,
         downstream=downstream,
         policy=policy or AllowAllPolicy(),
-        audit=audit,
+        audit=audit_override or sink,
         approvals=approvals,
         call_timeout=call_timeout,
     )
@@ -198,7 +211,17 @@ async def running_gateway(
     await ready.wait()
     try:
         yield GatewayHarness(
-            app, registry, audit, downstream, keys, delay, dict(catalog), approvals, now
+            app,
+            registry,
+            audit,
+            downstream,
+            keys,
+            delay,
+            dict(catalog),
+            approvals,
+            audit_store,
+            alerts,
+            now,
         )
     finally:
         stop.set()

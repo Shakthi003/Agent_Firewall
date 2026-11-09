@@ -22,7 +22,7 @@ from core.config import Settings, get_settings
 from core.db import make_engine
 from gateway.approvals.store import ApprovalStore
 from gateway.identity.registry import AgentRegistry
-from gateway.mcp_gateway.audit import LoggingAuditSink
+from gateway.mcp_gateway.audit import FanOutAuditSink, LoggingAuditSink
 from gateway.mcp_gateway.downstream import (
     Connector,
     Downstream,
@@ -35,6 +35,9 @@ from gateway.mcp_gateway.tools import RegistryError, ToolRegistry
 from gateway.policy.engine import RuleEngine
 from gateway.policy.policy_file import PolicyFileError, default_policy_path
 from gateway.policy.rate_limit import TokenBucketRateLimiter
+from monitoring.audit.store import AuditStore
+from monitoring.detection.alerts import AlertStore, MonitoredAuditSink
+from monitoring.detection.rules import BehaviourMonitor
 
 
 async def build_gateway(
@@ -49,6 +52,15 @@ async def build_gateway(
     registry.create_tables()
     approvals = ApprovalStore(engine, expiry_seconds=settings.approval_expiry_minutes * 60)
     approvals.create_tables()
+    # Stage 5: every event goes to the hash-chained PostgreSQL log (scored by the rule-based
+    # monitor on the way in) and to the JSON log. The approver API writes to the same chain.
+    audit_store = AuditStore(engine)
+    audit_store.create_tables()
+    alerts = AlertStore(engine)
+    alerts.create_tables()
+    audit = FanOutAuditSink(
+        [MonitoredAuditSink(audit_store, alerts, BehaviourMonitor()), LoggingAuditSink()]
+    )
     downstream = Downstream(connector or http_connector(settings))
     tools = ToolRegistry.load()
     catalog = await load_catalog(tools, downstream)
@@ -66,7 +78,7 @@ async def build_gateway(
         catalog=catalog,
         downstream=downstream,
         policy=policy,
-        audit=LoggingAuditSink(),
+        audit=audit,
         approvals=approvals,
         call_timeout=settings.gateway_call_timeout_seconds,
     )

@@ -338,7 +338,11 @@ async def test_a_pipeline_fault_fails_closed_and_forwards_nothing() -> None:
 # ------------------------------------------------------------------ audit content
 
 
-async def test_audit_events_never_contain_keys_or_argument_values(gw: GatewayHarness) -> None:
+async def test_audit_events_never_contain_keys_or_secret_argument_values(
+    gw: GatewayHarness,
+) -> None:
+    """Stage 5 keeps sanitized arguments (IDs, limits) because detections need them; keys and
+    account numbers must still never appear (`tests/security/test_audit.py` goes further)."""
     key = gw.keys["finance"].key
     async with gw.client(key) as client:
         await client.call_tool("get_invoice", {"invoice_id": "INV-0001"})
@@ -353,9 +357,9 @@ async def test_audit_events_never_contain_keys_or_argument_values(gw: GatewayHar
     dump = " ".join(repr(e) for e in gw.audit.events)
     assert key not in dump
     assert "99887766" not in dump
-    assert "INV-0001" not in dump
     event = call_events(gw)[-1]
     assert event.arg_names == ("account_number", "beneficiary_id")
+    assert event.sanitized_args == {"account_number": "****7766", "beneficiary_id": "BEN-001"}
     assert event.args_hash is not None
     assert len(event.args_hash) == 64
 

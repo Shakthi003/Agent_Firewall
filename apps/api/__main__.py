@@ -19,7 +19,8 @@ from apps.api.main import create_app
 from core.config import get_settings
 from core.db import make_engine
 from gateway.approvals.store import ApprovalStore
-from gateway.mcp_gateway.audit import LoggingAuditSink
+from gateway.mcp_gateway.audit import FanOutAuditSink, LoggingAuditSink
+from monitoring.audit.store import AuditStore
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -35,14 +36,14 @@ def main(argv: list[str] | None = None) -> int:
         print("approver API not started: APPROVER_PASSWORD is not set (see .env.example)")
         return 1
     logging.basicConfig(level=logging.INFO)
-    store = ApprovalStore(
-        make_engine(args.database_url or settings.database_url),
-        expiry_seconds=settings.approval_expiry_minutes * 60,
-    )
+    engine = make_engine(args.database_url or settings.database_url)
+    store = ApprovalStore(engine, expiry_seconds=settings.approval_expiry_minutes * 60)
     store.create_tables()
+    audit_store = AuditStore(engine)  # the gateway's hash chain: approvals are events in it too
+    audit_store.create_tables()
     app = create_app(
         store,
-        LoggingAuditSink(),
+        FanOutAuditSink([audit_store, LoggingAuditSink()]),
         username=settings.approver_username,
         password=password.get_secret_value(),  # secret-scan: ignore
     )
