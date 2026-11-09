@@ -20,6 +20,7 @@ COPY apps ./apps
 COPY agents ./agents
 COPY gateway ./gateway
 COPY monitoring ./monitoring
+COPY workflows ./workflows
 COPY policies ./policies
 COPY mcp_servers ./mcp_servers
 COPY scripts ./scripts
