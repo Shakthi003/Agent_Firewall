@@ -10,7 +10,6 @@ It does not start without `APPROVER_PASSWORD`.
 from __future__ import annotations
 
 import argparse
-import logging
 import sys
 
 import uvicorn
@@ -18,8 +17,11 @@ import uvicorn
 from apps.api.main import create_app
 from core.config import get_settings
 from core.db import make_engine
+from core.logging_setup import configure_logging
 from gateway.approvals.store import ApprovalStore
+from gateway.identity.registry import AgentRegistry
 from gateway.mcp_gateway.audit import FanOutAuditSink, LoggingAuditSink
+from gateway.policy.policy_file import default_policy_path
 from monitoring.audit.store import AuditStore
 from monitoring.detection.alerts import AlertStore
 
@@ -36,7 +38,7 @@ def main(argv: list[str] | None = None) -> int:
     if password is None or not password.get_secret_value():
         print("approver API not started: APPROVER_PASSWORD is not set (see .env.example)")
         return 1
-    logging.basicConfig(level=logging.INFO)
+    configure_logging()
     engine = make_engine(args.database_url or settings.database_url)
     store = ApprovalStore(engine, expiry_seconds=settings.approval_expiry_minutes * 60)
     store.create_tables()
@@ -44,6 +46,8 @@ def main(argv: list[str] | None = None) -> int:
     audit_store.create_tables()
     alerts = AlertStore(engine)
     alerts.create_tables()
+    registry = AgentRegistry(engine)
+    registry.create_tables()
     app = create_app(
         store,
         FanOutAuditSink([audit_store, LoggingAuditSink()]),
@@ -51,6 +55,8 @@ def main(argv: list[str] | None = None) -> int:
         password=password.get_secret_value(),  # secret-scan: ignore
         audit_store=audit_store,
         alerts=alerts,
+        policy_path=default_policy_path(settings.policy_dir),
+        registry=registry,
     )
     uvicorn.run(app, host=args.host or settings.api_host, port=args.port or settings.api_port)
     return 0

@@ -55,3 +55,24 @@ Write the answers down. If step 4 needed help, AC-47 is not met yet.
 ## Stop
 
 Press `Ctrl+C` in the terminal.
+
+---
+
+# Recruiter demo (about 5 minutes, for the recording)
+
+A script for the person presenting. It tells one story: the same agents, first unprotected, then behind the gateway. Run `uv run python -m scripts.demo_dashboard` first and sign in as above. Say the data is synthetic and every tool is a mock.
+
+| Minute | Show | Say |
+| -- | -- | -- |
+| 0:00 | README architecture diagram | "AI agents call company tools. Every call goes through one gateway that checks who is asking, applies written rules, and records everything. Agents have no other route to the tools." |
+| 0:30 | `uv run python -m scripts.run_baseline replay` (prints "UNPROTECTED BASELINE") | "Without the gateway, all 12 planned unsafe calls succeed: a bank-detail change, a production delete, a secrets read, a bulk export." |
+| 1:00 | Dashboard **Overview** | "Behind the gateway, normal work is allowed and the unsafe calls are stopped. The green banner says the audit log has not been altered." |
+| 1:30 | **Attack lab**, scenario **B**, **Run attack** | "The ticket text tells the agent to delete the production database. The agent may be fooled. The gateway still blocks the call before it reaches the server, with reason `PROD_DESTRUCTIVE_DENIED`." |
+| 2:15 | Click an `evidence #` button in the result | "Every decision is an audit record: who, which tool, which rule, which policy version, and a hash linking it to the previous record." |
+| 2:45 | **Attack lab**, scenario **A**; then **Approvals**; press **Approve** | "A bank-detail change is not blocked, it is paused. A human sees the exact values and approves. The approval works once, for exactly that request." |
+| 3:30 | Back in the lab result, the investigation section; click a blue `#n` | "An advisory workflow reads only the audit log and explains what happened. Each claim cites event numbers, and it cannot change a decision." |
+| 4:15 | **Policies** page, then `docs/evaluation-report.md` | "The rules are readable and versioned. In the evaluation, 12 of 12 unsafe calls ran unprotected and 0 of 12 ran through the gateway. These are simulated results on attacks I wrote, not a claim about real-world accuracy." |
+| 4:45 | README "Limitations" | "What it does not do: it cannot protect a route that skips the gateway, and it does not stop prompt injection itself, only the resulting call." |
+
+Before recording: sign out and back in once so the login is not on screen, and keep the terminal font large.
+

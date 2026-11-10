@@ -19,6 +19,48 @@
 | Downstream MCP servers | Company Data, Operations, Developer Tools (mock) | Trusted only via the gateway |
 | Admin API and dashboard | FastAPI plus React for approvals and audit views | Yes (approver login) |
 
+
+### System overview
+
+```mermaid
+flowchart LR
+    subgraph agent_net["agent_net (agents can reach only the gateway)"]
+        FA[Finance Agent]
+        IA[IT Ops Agent]
+        DA[Developer Agent]
+    end
+    subgraph internal_net["internal_net (no route from agents)"]
+        GW[MCP Gateway]
+        ID[Identity]
+        PE[Policy Engine]
+        AP[Approval Service]
+        AU[(Audit Store<br/>PostgreSQL, hash chain)]
+        MON[Monitoring<br/>rules + anomaly model]
+        INV[Investigation<br/>LangGraph, advisory]
+        CD[Company Data MCP]
+        OP[Operations MCP]
+        DT[Developer Tools MCP]
+        API[Approver API + Dashboard]
+    end
+    FA --> GW
+    IA --> GW
+    DA --> GW
+    GW --> ID
+    GW --> PE
+    GW --> AP
+    GW --> AU
+    GW -- ALLOW only --> CD
+    GW -- ALLOW only --> OP
+    GW -- ALLOW only --> DT
+    AU --> MON
+    AU --> INV
+    API --> AP
+    API --> AU
+    Human([Approver]) --> API
+```
+
+
+
 ---
 
 ## 2. Trusted identity mechanism

@@ -144,6 +144,37 @@ export interface SimResult {
   markdown: string;
 }
 
+export interface PolicyRuleView {
+  when: Record<string, Record<string, unknown>>;
+  decision: string;
+  reason: string | null;
+  note: string;
+}
+
+export interface PolicyToolView {
+  tool: string;
+  server: string | null;
+  owner: string | null;
+  sensitivity: string | null;
+  roles: string[];
+  rules: PolicyRuleView[];
+  default: { decision: string; reason: string | null };
+}
+
+export interface PolicyView {
+  policy_version: string;
+  tools: PolicyToolView[];
+}
+
+export interface AgentView {
+  agent_id: string;
+  role: string;
+  status: string;
+  key_version: number;
+  key_expires_at: number;
+  tools: string[];
+}
+
 export interface EventDetail {
   event: AuditEventView;
   same_call: AuditEventView[];
@@ -224,6 +255,8 @@ export const api = {
   event: (seq: number) => request<EventDetail>(`/api/audit/events/${seq}`),
   alerts: () => request<AlertView[]>("/api/alerts"),
   approvals: () => request<ApprovalView[]>("/api/approvals"),
+  policies: () => request<PolicyView>("/api/policies"),
+  agents: () => request<AgentView[]>("/api/agents"),
   decide: (id: string, approve: boolean) =>
     request<ApprovalView>(`/approvals/${encodeURIComponent(id)}/${approve ? "approve" : "reject"}`, { method: "POST" }),
   scenarios: () => request<Scenario[]>("/api/simulations/scenarios"),

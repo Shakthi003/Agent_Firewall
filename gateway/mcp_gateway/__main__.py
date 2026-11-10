@@ -20,6 +20,7 @@ from starlette.applications import Starlette
 
 from core.config import Settings, get_settings
 from core.db import make_engine
+from core.logging_setup import configure_logging
 from gateway.approvals.store import ApprovalStore
 from gateway.identity.registry import AgentRegistry
 from gateway.mcp_gateway.audit import FanOutAuditSink, LoggingAuditSink
@@ -95,7 +96,7 @@ def main(argv: list[str] | None = None) -> int:
     settings = get_settings()
     host = args.host or settings.gateway_host
     port = args.port or settings.gateway_port
-    logging.basicConfig(level=logging.INFO)
+    configure_logging()
     try:
         app = asyncio.run(build_gateway(settings, database_url=args.database_url))
     except (RegistryError, GatewayStartupError, PolicyFileError, RuntimeError) as exc:

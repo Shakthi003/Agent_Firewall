@@ -265,6 +265,37 @@ async def test_every_response_has_a_distinct_request_id() -> None:
     assert len(ids) == 5
 
 
+# ---------------------------------------------------------------- policies and agents (read-only)
+
+
+async def test_policies_and_agents_are_listed_read_only() -> None:
+    async with running_gateway(rules=True) as gw:
+        api = api_for(gw, policy_path=Path("policies/policy.yaml"), registry=gw.registry)
+        policies = api.get("/api/policies")
+        agents = api.get("/api/agents")
+        write = api.post("/api/policies", json={})
+    assert policies.status_code == 200
+    body = policies.json()
+    assert "+" in body["policy_version"]
+    bank = next(t for t in body["tools"] if t["tool"] == "update_beneficiary_bank_details")
+    assert bank["default"]["decision"] == "REQUIRE_APPROVAL"
+    assert "finance" in bank["roles"]
+    ids = {a["agent_id"]: a for a in agents.json()}
+    assert set(ids) == {"finance-agent", "it-ops-agent", "developer-agent"}
+    assert "read_env_secrets" not in ids["finance-agent"]["tools"]
+    assert "key" not in str(agents.json()).lower().replace("key_version", "").replace(
+        "key_expires_at", ""
+    )  # no key or key hash is ever exposed
+    assert write.status_code in (404, 405)
+
+
+async def test_policies_without_a_policy_file_is_503_and_agents_empty() -> None:
+    async with running_gateway(rules=True) as gw:
+        api = api_for(gw)
+        assert api.get("/api/policies").status_code == 503
+        assert api.get("/api/agents").json() == []
+
+
 # ---------------------------------------------------------------- login and exposure
 
 
@@ -280,6 +311,8 @@ async def test_every_dashboard_route_needs_the_approver_login() -> None:
             ("GET", "/api/audit/verify"),
             ("GET", "/api/alerts"),
             ("GET", "/api/approvals"),
+            ("GET", "/api/policies"),
+            ("GET", "/api/agents"),
             ("GET", "/api/simulations/scenarios"),
             ("POST", "/api/simulations/run"),
             ("POST", "/api/investigations"),

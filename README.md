@@ -13,6 +13,37 @@ Everything here is a demonstration: the data is synthetic and every tool is a mo
 - **Monitoring:** rules and an anomaly model raise alerts on odd behaviour. They never change a decision.
 - **Investigation and dashboard:** an advisory workflow explains incidents; a dashboard shows the log, approvals and alerts.
 
+
+## Architecture
+
+```mermaid
+flowchart LR
+    subgraph agent_net["agent_net (agents reach only the gateway)"]
+        A[Finance / IT Ops / Developer agents]
+    end
+    subgraph internal_net["internal_net (no route from agents)"]
+        G[MCP Gateway<br/>identity, registry, argument checks]
+        P[Policy engine<br/>ALLOW / BLOCK / REQUIRE_APPROVAL]
+        H[Approval service]
+        L[(Audit log<br/>PostgreSQL, hash chain)]
+        M[Monitoring + investigation<br/>advisory only]
+        S[Mock MCP servers<br/>Company Data, Operations, Developer Tools]
+        D[Approver API + dashboard]
+    end
+    A --> G
+    G --> P
+    G --> H
+    G --> L
+    G -- only on ALLOW --> S
+    L --> M
+    D --> H
+    D --> L
+```
+
+Request flows (ALLOW, BLOCK, REQUIRE_APPROVAL) are in [docs/architecture.md](docs/architecture.md).
+
+
+
 Evaluation results (with sample sizes and caveats): [docs/evaluation-report.md](docs/evaluation-report.md).
 
 ## Limitations
@@ -107,6 +138,7 @@ Settings are read from `.env`; see `.env.example` for every name. The Gemini key
 - [Architecture and request flows](docs/architecture.md)
 - [Acceptance criteria](docs/acceptance-criteria.md)
 - [Evaluation report](docs/evaluation-report.md)
+- [Test matrix](docs/test-matrix.md)
 
 ## Synthetic data
 

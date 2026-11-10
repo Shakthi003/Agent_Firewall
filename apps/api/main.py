@@ -40,6 +40,7 @@ from apps.api.dashboard import build_router
 from apps.api.simulation import default_model_factory
 from core.llm import ChatModel
 from gateway.approvals.store import ApprovalError, ApprovalRecord, ApprovalStore
+from gateway.identity.registry import AgentRegistry
 from gateway.mcp_gateway.audit import AuditEvent, AuditSink
 from monitoring.audit.store import AuditStore
 from monitoring.detection.alerts import AlertStore
@@ -71,6 +72,8 @@ def create_app(
     alerts: AlertStore | None = None,
     model_factory: Callable[[bool], ChatModel] = default_model_factory,
     dashboard_dir: Path | None = DASHBOARD_DIST,
+    policy_path: Path | None = None,
+    registry: AgentRegistry | None = None,
 ) -> FastAPI:
     if not username or not password:
         raise ValueError("The approver username and password must be set")
@@ -207,6 +210,8 @@ def create_app(
             view=_view,
             model_factory=model_factory,
             clock=clock,
+            policy_path=policy_path,
+            registry=registry,
         )
     )
     if dashboard_dir is not None and (dashboard_dir / "index.html").is_file():

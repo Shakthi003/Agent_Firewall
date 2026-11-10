@@ -5,16 +5,18 @@ import Overview from "./pages/Overview";
 import Audit from "./pages/Audit";
 import Approvals from "./pages/Approvals";
 import Alerts from "./pages/Alerts";
+import Policies from "./pages/Policies";
 import { Icon, Skeleton, usePoll } from "./ui";
 
 const Lab = lazy(() => import("./pages/Lab")); // the biggest page loads only when opened
 
-type Page = "overview" | "audit" | "approvals" | "alerts" | "lab";
+type Page = "overview" | "audit" | "approvals" | "alerts" | "policies" | "lab";
 const PAGES: { id: Page; label: string; icon: string; title: string; sub: string }[] = [
   { id: "overview", label: "Overview", icon: "grid", title: "Overview", sub: "How the gateway is protecting your agents" },
   { id: "audit", label: "Audit log", icon: "list", title: "Audit log", sub: "Every decision, with the reason and the policy that made it" },
   { id: "approvals", label: "Approvals", icon: "inbox", title: "Approvals", sub: "Risky requests waiting for a human decision" },
   { id: "alerts", label: "Alerts", icon: "bell", title: "Alerts", sub: "Unusual behaviour spotted by the monitor" },
+  { id: "policies", label: "Policies", icon: "lock", title: "Policies and agents", sub: "Who may use which tool, and the rules applied to each call (read-only)" },
   { id: "lab", label: "Attack lab", icon: "flask", title: "Attack lab", sub: "Replay a prompt-injection attack against the real gateway" },
 ];
 
@@ -96,6 +98,7 @@ function Console({ onLogout }: { onLogout: () => void }) {
         {page === "audit" && <Audit focusSeq={focusSeq} onFocusDone={() => setFocusSeq(null)} />}
         {page === "approvals" && <Approvals onChanged={counts.reload} />}
         {page === "alerts" && <Alerts onOpenEvent={(s) => { setFocusSeq(s); go("audit"); }} />}
+        {page === "policies" && <Policies />}
         {page === "lab" && (
           <Suspense fallback={<Skeleton h={320} />}>
             <Lab />

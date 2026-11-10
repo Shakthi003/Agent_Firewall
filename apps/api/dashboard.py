@@ -12,6 +12,8 @@ Stage 4 endpoints in `main.py`.
     GET  /api/audit/verify                walks the hash chain: intact or broken
     GET  /api/alerts                      behaviour-monitor alerts
     GET  /api/approvals                   every approval, not only the pending ones
+    GET  /api/policies                    the loaded policy: rules and tool grants
+    GET  /api/agents                      registered agents and the tools their role may use
     GET  /api/simulations/scenarios       the documented attack scenarios
     POST /api/simulations/run             run one in the sandbox, with its investigation
     POST /api/investigations              investigate the live audit log (advisory)
@@ -20,6 +22,7 @@ Stage 4 endpoints in `main.py`.
 import asyncio
 from collections import Counter, defaultdict
 from collections.abc import Callable
+from pathlib import Path
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -34,6 +37,9 @@ from apps.api.simulation import (
 )
 from core.llm import ChatModel
 from gateway.approvals.store import ApprovalRecord, ApprovalStore
+from gateway.identity.registry import AgentRegistry
+from gateway.mcp_gateway.tools import ToolRegistry
+from gateway.policy.policy_file import load_policy
 from monitoring.audit.store import AuditStore
 from monitoring.detection.alerts import AlertStore
 from workflows.investigation.evidence import AuditEvidence
@@ -66,6 +72,8 @@ def build_router(
     view: Callable[[ApprovalRecord], dict[str, Any]],
     model_factory: Callable[[bool], ChatModel],
     clock: Callable[[], float],
+    policy_path: Path | None = None,
+    registry: AgentRegistry | None = None,
 ) -> APIRouter:
     router = APIRouter(prefix="/api", dependencies=[Depends(auth)])
     sandbox_lock = asyncio.Lock()  # one simulation at a time keeps the server responsive
@@ -194,6 +202,48 @@ def build_router(
     @router.get("/alerts")
     def list_alerts(limit: Annotated[int, Query(ge=1, le=200)] = 100) -> list[dict[str, Any]]:
         return alerts.list_recent(limit=limit) if alerts is not None else []
+
+    @router.get("/policies")
+    def policies() -> dict[str, Any]:
+        if policy_path is None:
+            raise HTTPException(status_code=503, detail="No policy file is configured.")
+        try:
+            loaded = load_policy(policy_path)
+            tools = ToolRegistry.load()
+        except Exception:  # a bad file must not leak paths or parser text to the browser
+            raise HTTPException(status_code=503, detail="The policy cannot be read.") from None
+        entries = []
+        for name, tool_policy in sorted(loaded.file.tools.items()):
+            entry = tools.get(name)
+            entries.append(
+                {
+                    "tool": name,
+                    "server": entry.server if entry else None,
+                    "owner": entry.owner if entry else None,
+                    "sensitivity": entry.sensitivity if entry else None,
+                    "roles": list(entry.roles) if entry else [],
+                    "rules": [r.model_dump(mode="json") for r in tool_policy.rules],
+                    "default": tool_policy.default.model_dump(mode="json"),
+                }
+            )
+        return {"policy_version": loaded.version, "tools": entries}
+
+    @router.get("/agents")
+    def agents() -> list[dict[str, Any]]:
+        if registry is None:
+            return []
+        tools = ToolRegistry.load()
+        return [
+            {
+                "agent_id": a.agent_id,
+                "role": a.role,
+                "status": a.status,
+                "key_version": a.key_version,
+                "key_expires_at": a.key_expires_at,
+                "tools": sorted(tools.tools_for_role(a.role)),
+            }
+            for a in registry.list_agents()
+        ]
 
     @router.get("/approvals")
     def list_approvals(limit: Annotated[int, Query(ge=1, le=200)] = 50) -> list[dict[str, Any]]:
