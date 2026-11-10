@@ -137,9 +137,14 @@ async def running_gateway(
     expiry_seconds: int = 900,
     audit_override: AuditSink | None = None,
     monitor: BehaviourMonitor | None = None,
+    database_url: str = "sqlite://",
 ) -> AsyncIterator[GatewayHarness]:
     """`rules=True` runs the real Stage 3 engine on `policies/policy.yaml`. The limiter defaults
-    to a roomy one so that tests which make many calls do not trip the rate limit."""
+    to a roomy one so that tests which make many calls do not trip the rate limit.
+
+    `database_url` defaults to in-memory SQLite, which shares ONE connection between threads and
+    so is only safe for calls made one after another. Tests that send calls in parallel must pass
+    a file URL (each thread then gets its own connection, as with PostgreSQL)."""
     company, operations, developer = generate_all()
     servers = {
         "company_data": create_company_data(company),
@@ -160,7 +165,7 @@ async def running_gateway(
     tools = tools or ToolRegistry.load()
     catalog = await load_catalog(tools, downstream)
 
-    engine = make_engine("sqlite://")
+    engine = make_engine(database_url)
     registry = AgentRegistry(engine)
     registry.create_tables()
     now: dict[str, float] = {"t": time.time()}

@@ -278,7 +278,9 @@ Approvals expire after 15 minutes by default (configurable). The polling and ret
 
 False alarms on 120 normal sessions: rules 0, model 4. Window level (5 minutes per agent): rules precision 1.00, recall 0.74; model precision 0.84, recall 0.37; combined precision 0.91, recall 0.74.
 
-What this shows, and does not: the rules catch every attack they were written for with no false alarms, and miss the slow scrape by design. The model adds nothing on top of the rules on this data (combined recall equals rules recall) and costs 4 false alarms, so it stays optional and alert-only. The slow scrape (about 12 reads a minute, under every threshold) is missed by both; that is an honest gap, not a result to hide. These numbers come from synthetic traffic with the same author as the detectors, so they show the pipeline works, not how it would do on real traffic.
+What this shows, and does not: the rules catch every attack they were written for with no false alarms, and miss the slow scrape by design. On seed 2002 the model adds nothing on top of the rules (combined recall equals rules recall) and costs 4 false alarms, so it stays optional and alert-only. The slow scrape (about 12 reads a minute, under every threshold) is missed by both; that is an honest gap, not a result to hide. These numbers come from synthetic traffic with the same author as the detectors, so they show the pipeline works, not how it would do on real traffic.
+
+**Re-tested on a fresh seed (Stage 8).** Seed 4004 was never looked at while tuning: 120 normal sessions, 36 attacks, 126 normal and 40 attack windows. Rules: precision 1.000, recall 0.750, 0 false alarms. Model: precision 0.941, recall 0.400, 2 false alarms in 120 sessions. Combined: precision 0.969, recall 0.775. The per-kind pattern is the same as above (burst and off-hours caught by rules only; slow scrape missed by both). The tuning caveat above therefore did not hide a collapse: the figures are close to the tuned ones. One conclusion changes: on this seed the model caught 1 attack window the rules missed (31 of 40 against 30 of 40, recall 0.775 against 0.750), so "adds nothing" holds for seed 2002 only. One window is too few to call a real gain. Full table: `docs/evaluation-report.md`.
 
 **Live checks**
 
@@ -305,3 +307,25 @@ What this shows, and does not: the rules catch every attack they were written fo
 - **Docker.** The Dockerfile builds the dashboard in a Node stage and copies only `dist` into the image. The API serves it from `/` when it exists. The simulation needs `tests/`, which the image leaves out, so there it answers 503 with a clear message instead of failing.
 - **Docker, verified.** The full stack was built and started (`docker compose --env-file .env -f infra/docker-compose.yml -f infra/docker-compose.approver-host.yml up -d --build`; all services healthy). With the host override the dashboard is at `http://127.0.0.1:8000`. A finance-agent key was registered in the stack's PostgreSQL, one allowed and one blocked call were sent through the gateway from the `agent` container, and the dashboard API showed them (3 calls recorded, 1 allowed, 2 blocked), with the audit chain verified intact (`/api/audit/verify`). Without a login `/api/overview` answers 401. Compose reads `.env` from `infra/`, so pass `--env-file .env` when it sits in the project root. For the lab (scenarios A to D) use `scripts.demo_dashboard`.
 - **Not done:** no live-updating push channel (pages poll every 5 to 60 seconds, and not while the tab is hidden); no browser-driven end-to-end test; the visual check was by API and build output, not by eye.
+
+---
+
+## 13. Stage 8 as built (evaluation and packaging)
+
+| Criterion | Evidence | Where |
+| --------- | -------- | ----- |
+| AC-49 same suite with and without the gateway | 12 planned unsafe calls: 12/12 ran on the unprotected servers, 0/12 ran through the gateway (9 blocked, 3 paused), all 12 with the pre-written decision and reason code | `scripts/run_evaluation.py`, `docs/evaluation-report.md` section 1 |
+| AC-50 metrics with sample sizes | Blocking rate, false positives, latency, audit completeness, approval integrity and anomaly precision and recall, each with its sample | `docs/evaluation-report.md` section 2 |
+| AC-51 concurrency, timeout, downstream error, retry, duplicate | 17 tests plus a matrix (docstring) of which older test covers the rest | `tests/security/test_robustness.py` |
+| AC-52 dependency and secret scans | Secrets, `pip-audit` on the locked non-dev packages, and `npm audit --omit=dev` all clean | `scripts/security_scan.py` |
+| AC-53 clean clone brings the stack up | The README steps were run on a copy of the tracked files without `.env` or `.venv`: all services healthy, keys issued, smoke test passed, audit chain verified, torn down with no leftovers | `README.md`, `scripts/smoke_test.py` |
+| AC-54 limitations stated | A "Limitations" section, including bypass and prompt injection | `README.md` |
+
+**Choices worth knowing**
+
+- **Re-run the report with** `uv run python -m scripts.run_evaluation --write docs/evaluation-report.md`. The script exits non-zero if an unsafe call runs, a decision differs from the plan, an approval rule is broken, a request has no audit record or the chain does not verify.
+- **Latency is in-process.** It is the gateway's own decision time (about 1.4 ms median, 3 ms at the 95th percentile) with SQLite and no network. It is not an end-to-end figure and not a PostgreSQL figure.
+- **The false-positive and blocking figures are floors.** Both use calls the policy was written against, so they show the rules do what they say, not how they would do on traffic nobody planned for.
+- **Parallel tests need a file database.** The test harness defaults to in-memory SQLite, which shares one connection between threads; parallel calls corrupted it and made tests fail about half the time. `running_gateway(database_url=...)` now lets a test pass a file, as the six parallel tests do. They passed 8 runs in a row. This is a limit of the test setup, not of the gateway, which uses PostgreSQL with a connection per thread.
+- **The concurrency test can fail.** With the "spend only once" guard in `ApprovalStore.consume` removed, the parallel-spend test fails (10 runs instead of 1). It was put back afterwards.
+- **Not done:** no load or soak test, no run against PostgreSQL under parallel traffic beyond the Stage 5 live check, no CI workflow (the scans and tests are scripts to run), and the unprotected comparison uses the planned-call replay, not model-driven runs, so it says nothing about whether a real model would have made those calls.
