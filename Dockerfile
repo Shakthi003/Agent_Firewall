@@ -1,5 +1,14 @@
 # One image for the gateway, the approver API, the mock MCP servers and the demo agent.
 # The command is chosen per service in infra/docker-compose.yml.
+
+# Stage 7: build the React dashboard. Only the compiled files are copied into the final image.
+FROM node:20-slim AS dashboard
+WORKDIR /dashboard
+COPY apps/dashboard/package.json apps/dashboard/package-lock.json ./
+RUN npm ci --no-audit --no-fund
+COPY apps/dashboard ./
+RUN npm run build
+
 FROM python:3.11-slim
 
 ENV PYTHONUNBUFFERED=1 \
@@ -17,6 +26,7 @@ RUN uv sync --frozen --no-dev --no-install-project
 
 COPY core ./core
 COPY apps ./apps
+COPY --from=dashboard /dashboard/dist ./apps/dashboard/dist
 COPY agents ./agents
 COPY gateway ./gateway
 COPY monitoring ./monitoring

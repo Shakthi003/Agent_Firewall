@@ -231,7 +231,7 @@ Approvals expire after 15 minutes by default (configurable). The polling and ret
 - The approval ID travels in the MCP `_meta` field, not in the tool arguments, so tool schemas and the strict argument check are unchanged and a standard MCP client still works.
 - With no `ApprovalStore` given, the gateway behaves exactly as in Stage 3 (`REQUIRE_APPROVAL` is a plain denial).
 - **Docker:** `approver-api` is a Compose service on `internal_net` only, sharing the gateway's database. It publishes **no port** by default. A live probe showed that a published port is reachable from other Docker networks by container IP (PostgreSQL's dev port is too), which would give agents a network route to the approve endpoint. A test now proves the agent cannot reach it by name or IP. To approve from the host, opt in with `-f infra/docker-compose.approver-host.yml`, which publishes it on `127.0.0.1` and says what that costs.
-- **Outside Docker:** `uv run python -m apps.api` against the gateway's database. The React dashboard (Stage 7) will call it.
+- **Outside Docker:** `uv run python -m apps.api` against the gateway's database. The React dashboard (Stage 7) is served by it.
 - **Live run:** the real gateway, approver API and three MCP servers as separate processes over HTTP, first on SQLite and then on PostgreSQL 16 in Docker. Both runs behaved as in the tests: login required (an agent key gets 401), pending, mismatch, approve, run once with the downstream result, replay refused, rejection refused. The PostgreSQL rows show one `used` / `approver` / `ok` and one `rejected`. The audit lines and the check that no argument value appears in any log line were read on the SQLite run only.
 
 ---
@@ -283,3 +283,25 @@ What this shows, and does not: the rules catch every attack they were written fo
 **Live checks**
 
 - On PostgreSQL 16 (Docker): 4 threads over 2 `AuditStore` objects wrote 100 records into one unforked chain that verified; an `UPDATE` of record 42 was then reported at record 42.
+
+---
+
+## 12. Stage 7 as built (dashboard and API)
+
+| Part | Where | What it does |
+| ---- | ----- | ------------ |
+| Dashboard | `apps/dashboard` (React 18, TypeScript, Vite) | Five pages: Overview, Audit log, Approvals, Alerts, Attack lab. No UI or chart library: charts are plain SVG, fonts are the system's. Main bundle is about 57 KB gzipped; the Attack lab loads only when opened |
+| Read API | `apps/api/dashboard.py`, under `/api` | `session`, `overview`, `audit/events` (filter, search, paging), `audit/events/{seq}`, `audit/verify`, `alerts`, `approvals`, `simulations/scenarios`, `simulations/run`, `investigations` |
+| Simulation | `apps/api/simulation.py` | Runs attack scenario A to D through the real gateway and policy in a throw-away in-memory sandbox, then the Stage 6 investigation on that sandbox's trail. Offline mode (default) uses the deterministic fallback, so no key or network is needed |
+| Errors | `apps/api/main.py` | Every response has `X-Request-ID`. Bad input is a 422 and any unhandled error a 500; both return the request ID and a fixed message, never a stack trace |
+| Demo data | `scripts/demo_dashboard.py` | `uv run python -m scripts.demo_dashboard` serves the UI on seeded temporary data. Login `approver` / `demo-approver` |
+
+**Choices worth knowing**
+
+- **Same login, same API.** The dashboard uses the Stage 4 approver login (HTTP Basic) and the Stage 4 approve and reject endpoints. An agent key is not accepted. Credentials are kept in `sessionStorage`, so they go when the tab closes. Over plain HTTP this suits a local demo only; put TLS in front for anything else.
+- **No browser popup.** For requests that send `X-Requested-With: dashboard`, a 401 omits `WWW-Authenticate`, so the browser's own login box does not appear over the dashboard's form. Failed logins are still audited.
+- **Read-only by construction.** The audit endpoints only read. The simulation writes to its own sandbox database, never the live audit log, approvals or keys. A test checks the live event count is unchanged after a run.
+- **The UI explains, it does not decide.** Reason codes are shown with a plain-English meaning; the monitor's alerts are labelled as never changing a decision.
+- **Docker.** The Dockerfile builds the dashboard in a Node stage and copies only `dist` into the image. The API serves it from `/` when it exists. The simulation needs `tests/`, which the image leaves out, so there it answers 503 with a clear message instead of failing.
+- **Docker, verified.** The full stack was built and started (`docker compose --env-file .env -f infra/docker-compose.yml -f infra/docker-compose.approver-host.yml up -d --build`; all services healthy). With the host override the dashboard is at `http://127.0.0.1:8000`. A finance-agent key was registered in the stack's PostgreSQL, one allowed and one blocked call were sent through the gateway from the `agent` container, and the dashboard API showed them (3 calls recorded, 1 allowed, 2 blocked), with the audit chain verified intact (`/api/audit/verify`). Without a login `/api/overview` answers 401. Compose reads `.env` from `infra/`, so pass `--env-file .env` when it sits in the project root. For the lab (scenarios A to D) use `scripts.demo_dashboard`.
+- **Not done:** no live-updating push channel (pages poll every 5 to 60 seconds, and not while the tab is hidden); no browser-driven end-to-end test; the visual check was by API and build output, not by eye.

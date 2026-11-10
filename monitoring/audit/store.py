@@ -24,7 +24,7 @@ from collections.abc import Iterator
 from dataclasses import asdict, dataclass, replace
 from typing import Any
 
-from sqlalchemy import BigInteger, Engine, Float, Integer, String, Text, func, select, text
+from sqlalchemy import BigInteger, Engine, Float, Integer, String, Text, func, or_, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
@@ -187,6 +187,61 @@ class AuditStore:
             query = query.limit(limit)
         with Session(self._engine) as session:
             return [_stored(row) for row in session.scalars(query)]
+
+    def list_events(
+        self,
+        *,
+        limit: int = 100,
+        before_seq: int | None = None,
+        decision: str | None = None,
+        agent_id: str | None = None,
+        method: str | None = None,
+        search: str | None = None,
+    ) -> list[StoredEvent]:
+        """Newest first, for the dashboard. Read-only; `search` matches reason, tool, agent or
+        correlation ID (case-insensitive, wildcards escaped)."""
+        query = select(AuditRow).order_by(AuditRow.seq.desc()).limit(limit)
+        if before_seq is not None:
+            query = query.where(AuditRow.seq < before_seq)
+        if decision is not None:
+            query = query.where(AuditRow.decision == decision)
+        if agent_id is not None:
+            query = query.where(AuditRow.agent_id == agent_id)
+        if method is not None:
+            query = query.where(AuditRow.method == method)
+        if search:
+            query = query.where(
+                or_(
+                    AuditRow.reason_code.icontains(search, autoescape=True),
+                    AuditRow.tool.icontains(search, autoescape=True),
+                    AuditRow.agent_id.icontains(search, autoescape=True),
+                    AuditRow.correlation_id.icontains(search, autoescape=True),
+                )
+            )
+        with Session(self._engine) as session:
+            return [_stored(row) for row in session.scalars(query)]
+
+    def summary_rows(
+        self, *, since: float | None = None, limit: int = 100_000
+    ) -> list[tuple[float, str, str, str | None, str, str]]:
+        """Light columns only (no JSON) for dashboard totals:
+        (timestamp, decision, reason_code, agent_id, method, enforcement_action)."""
+        query = (
+            select(
+                AuditRow.timestamp,
+                AuditRow.decision,
+                AuditRow.reason_code,
+                AuditRow.agent_id,
+                AuditRow.method,
+                AuditRow.enforcement_action,
+            )
+            .order_by(AuditRow.seq.desc())
+            .limit(limit)
+        )
+        if since is not None:
+            query = query.where(AuditRow.timestamp >= since)
+        with Session(self._engine) as session:
+            return [tuple(r) for r in session.execute(query)]  # type: ignore[misc]
 
     def get_by_seq(self, seq: int) -> StoredEvent | None:
         with Session(self._engine) as session:

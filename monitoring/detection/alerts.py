@@ -17,8 +17,9 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import replace
+from typing import Any
 
-from sqlalchemy import Engine, Float, Integer, String, Text, select
+from sqlalchemy import Engine, Float, Integer, String, Text, func, select
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from core.db import Base
@@ -64,6 +65,29 @@ class AlertStore:
                     audit_seq=audit_seq,
                 )
             )
+
+    def list_recent(self, *, limit: int = 100) -> list[dict[str, Any]]:
+        """Newest first, with the row ID and audit sequence, for the dashboard."""
+        query = select(AlertRow).order_by(AlertRow.id.desc()).limit(limit)
+        with Session(self._engine) as session:
+            return [
+                {
+                    "id": row.id,
+                    "timestamp": row.timestamp,
+                    "rule": row.rule,
+                    "agent_id": row.agent_id,
+                    "score": row.score,
+                    "severity": row.severity,
+                    "detail": row.detail,
+                    "evidence": json.loads(row.evidence_json),
+                    "audit_seq": row.audit_seq,
+                }
+                for row in session.scalars(query)
+            ]
+
+    def count(self) -> int:
+        with Session(self._engine) as session:
+            return session.scalar(select(func.count()).select_from(AlertRow)) or 0
 
     def list_alerts(self, *, agent_id: str | None = None, rule: str | None = None) -> list[Alert]:
         query = select(AlertRow).order_by(AlertRow.id)

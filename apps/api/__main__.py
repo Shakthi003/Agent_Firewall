@@ -21,6 +21,7 @@ from core.db import make_engine
 from gateway.approvals.store import ApprovalStore
 from gateway.mcp_gateway.audit import FanOutAuditSink, LoggingAuditSink
 from monitoring.audit.store import AuditStore
+from monitoring.detection.alerts import AlertStore
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -41,11 +42,15 @@ def main(argv: list[str] | None = None) -> int:
     store.create_tables()
     audit_store = AuditStore(engine)  # the gateway's hash chain: approvals are events in it too
     audit_store.create_tables()
+    alerts = AlertStore(engine)
+    alerts.create_tables()
     app = create_app(
         store,
         FanOutAuditSink([audit_store, LoggingAuditSink()]),
         username=settings.approver_username,
         password=password.get_secret_value(),  # secret-scan: ignore
+        audit_store=audit_store,
+        alerts=alerts,
     )
     uvicorn.run(app, host=args.host or settings.api_host, port=args.port or settings.api_port)
     return 0

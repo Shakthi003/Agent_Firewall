@@ -207,6 +207,15 @@ class ApprovalStore:
             row = session.get(ApprovalRow, approval_id)
             return _record(row, now) if row is not None else None
 
+    def list_recent(self, limit: int = 50) -> list[ApprovalRecord]:
+        """Every approval, newest first (pending, decided, used and expired), for the dashboard."""
+        now = int(self._clock())
+        with Session(self._engine) as session:
+            rows = session.scalars(
+                select(ApprovalRow).order_by(ApprovalRow.created_at.desc()).limit(limit)
+            )
+            return [_record(row, now) for row in rows]
+
     def list_pending(self) -> list[ApprovalRecord]:
         now = int(self._clock())
         with Session(self._engine) as session:

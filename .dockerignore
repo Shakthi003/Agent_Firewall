@@ -12,3 +12,5 @@ Progress1.md
 tests
 docs
 data/generated
+apps/dashboard/node_modules
+apps/dashboard/dist

@@ -369,7 +369,9 @@ async def test_alerts_are_saved_with_evidence_pointing_at_real_audit_events() ->
         async with gw.client(gw.keys["finance"].key) as client:
             await client.call_tool("export_records", {"table": "invoices", "limit": 5000})
         assert gw.alerts is not None and gw.audit_store is not None
-        saved = gw.alerts.list_alerts()
-        assert [a.rule for a in saved] == ["LARGE_EXPORT"]
+        # OFF_HOURS also fires when this runs outside 06:00-22:00 UTC (it reads the wall clock),
+        # so only the rule this test is about is checked.
+        saved = [a for a in gw.alerts.list_alerts() if a.rule == "LARGE_EXPORT"]
+        assert len(saved) == 1
         for cid in saved[0].evidence:
             assert gw.audit_store.get_by_correlation(cid), "an alert cites a missing audit event"
